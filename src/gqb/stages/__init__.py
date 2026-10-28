@@ -18,7 +18,6 @@ from gqb.stages.retrieve import BM25Stage, DenseStage, HybridStage
 from gqb.stages.verify import (
     CascadeStage,
     ClaimDecomposeStage,
-    ColumnCheckStage,
     GavelScrutinizeStage,
     LLMJudgeStage,
     NLISmallStage,
@@ -35,7 +34,6 @@ REGISTRY: dict[str, dict[str, type[BaseStage]]] = {
     "generate": {"plain": PlainStage, "cite": CiteStage, "gavel_debate": GavelDebateStage},
     "verify": {
         "span_check": SpanCheckStage,
-        "column_check": ColumnCheckStage,
         "gavel_scrutinize": GavelScrutinizeStage,
         "llm_judge": LLMJudgeStage,
         "claim_decompose": ClaimDecomposeStage,

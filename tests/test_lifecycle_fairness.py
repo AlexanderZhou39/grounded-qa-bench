@@ -50,30 +50,6 @@ def test_stale_only_scoring_accepts_explicit_warning():
     assert not STALE_WORDS.search("The shunt capacitance is 1.5 pF.")
 
 
-def _typ_state(question: str, answer: str, row: str, value: float) -> PipelineState:
-    st = _state(answer, row, f"PARAMETER MIN TYP MAX UNIT\n{row}", value)
-    st.question = question
-    return st
-
-
-def test_column_check_flags_limits_answered_as_typical():
-    from gqb.stages.verify import column_check_claim
-
-    row = "VINL Input low voltage 0.8 V max"
-    st = _typ_state("What is the typical VINL?", "The typical VINL is 0.8 V.", row, 0.8)
-    assert column_check_claim(st.answer.claims[0], st, "t").verdict == Verdict.UNSUPPORTED
-    said = _typ_state("What is the typical VINL?", "No typical; 0.8 V maximum.", "VINL 0.8 V", 0.8)
-    assert column_check_claim(said.answer.claims[0], said, "t").verdict == Verdict.UNSUPPORTED
-    # a limit word that is part of the asked parameter's name is not a limit label
-    name = _typ_state(
-        "What is the typical maximum frequency fMAX?", "fMAX is 20 MHz.", "fMAX 20 MHz", 20
-    )
-    assert column_check_claim(name.answer.claims[0], name, "t").verdict == Verdict.SUPPORTED
-    # questions that do not ask for a typical value are left to span_check
-    lim = _typ_state("What is the maximum VINL?", "The maximum VINL is 0.8 V.", row, 0.8)
-    assert column_check_claim(lim.answer.claims[0], lim, "t").verdict == Verdict.SUPPORTED
-
-
 def test_near_miss_cond_rewrites_room_temperature():
     from gqb.dataset.generate import _ROOM, _TEMP, _hot
 

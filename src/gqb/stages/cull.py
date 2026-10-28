@@ -10,8 +10,6 @@
 
 from __future__ import annotations
 
-import re
-
 from pydantic import BaseModel, Field
 
 from gqb.llm import Message, StageMeter
@@ -25,17 +23,6 @@ def passages_to_units(passages: list[Passage]) -> list[EvidenceUnit]:
         EvidenceUnit(id=f"E{i}", passage_id=p.id, doc_id=p.doc_id, page=p.page, text=p.text)
         for i, p in enumerate(passages, 1)
     ]
-
-
-_META = re.compile(r"(?i)\b(revision|version|valid|supersed)")
-
-
-def _with_meta(quote: str, p: Passage) -> str:
-    """Extracted quotes keep the passage's document-metadata line (a leading ``[...]`` line,
-    e.g. a revision header), so provenance survives evidence extraction."""
-    first = p.text.split("\n", 1)[0]
-    meta = first.startswith("[") and _META.search(first) and first not in quote
-    return f"{first}\n{quote}" if meta else quote
 
 
 def _format_passages(passages: list[Passage]) -> str:
@@ -133,7 +120,7 @@ class EvidentAlignStage(BaseStage):
                     passage_id=p.id,
                     doc_id=p.doc_id,
                     page=p.page,
-                    text=_with_meta(ex.quote, p),
+                    text=ex.quote,
                     char_start=m.start,
                     char_end=m.end,
                 )
@@ -194,7 +181,7 @@ class GavelContractStage(BaseStage):
                     passage_id=p.id,
                     doc_id=p.doc_id,
                     page=p.page,
-                    text=_with_meta(f"{b.quote}\n(establishes: {b.subclaim})", p),
+                    text=f"{b.quote}\n(establishes: {b.subclaim})",
                     char_start=m.start,
                     char_end=m.end,
                 )

@@ -46,7 +46,7 @@
 - [x] Retrievers `dense` (bge-small, CPU) / `hybrid` (RRF), `mpn_filter` entity scope. Hybrid+MPN
       recovers the corpus-scope gap (0.833→0.935)
 - [x] One sub-query per entity for T4 (`retrieve.per_entity`): T4 0.708→0.854 (n=16)
-- [x] `column_check` verifier (deterministic, no LLM): held-out near-miss 0.51→0.77, overall 0.833→0.880
+- [x] `column_check` verifier: tried and removed. It was a datasheet-specific rule fitted after looking at dev
 - [x] `nli_small` verifier (nli-deberta-v3-base, extra `local`). Near chance on RAGTruth (BAcc 0.57
       calibrated). Next: a grounding-trained small checker
 - [x] Verifier track: done on RAGTruth (`bench vtrack`). Harvesting pairs from datasheet runs is
@@ -62,7 +62,7 @@
 - [ ] Lifecycle with real revisions: needs the older public PDF revisions downloaded and added to the
       allowlist; the corpus's revision histories list only 6 value changes
 - [x] Fairness pass: loose alignment by default, number grounding in scrutiny limited to the answer
-      value, decompose skips commentary, metadata survives evidence extraction (RESULTS.md)
+      value, decompose skips commentary (RESULTS.md). Eval-specific fixes were removed
 
 ## Phase 3: external sets
 - [x] TAT-QA adapter (`external/tatqa.py`, `configs/tatqa.yaml`): 150 numeric items, unit-free scoring

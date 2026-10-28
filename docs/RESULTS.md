@@ -313,8 +313,7 @@ Diagnosed from verifier rationales on correct answers that were flagged anyway (
 | Number parsing split thousands separators ("4,351" → 4, 351), so comma-formatted values never matched | Grouped literals are parsed whole as well as in parts | (included above) |
 | Quote alignment was strict in debate scrutiny, `gavel_contract`, `evident_align`, `claim_decompose` | All default to loose alignment: exact, then normalised, then an order-free token window. Values must still match. `align: strict` is still available | Full GAVEL on TAT-QA 0.67→0.81 (false flags 0.35→0.11); dev 0.900→0.917 |
 | `claim_decompose` turned commentary ("the revisions conflict") into claims that then failed | The decompose prompt keeps only asserted facts | dev false flags 0.16→0.11, catch 0.37→0.48 |
-| Evidence-extraction culls (contract, EvidenT) kept bare quotes and lost the document-metadata line (revision header) | Extracted units keep a leading `[...revision/version...]` line. No datasheet or TAT-QA page has one, so those runs are unchanged | GAVEL on stale-only 0.54→1.00 |
-| GAVEL judge dropped the caveats debaters raised | Judge prompt: keep caveats about sources (superseded revision, conflicting values) | (included above) |
+| GAVEL judge dropped the caveats debaters raised | Judge prompt: keep caveats about sources (superseded revision, conflicting values) | – |
 
 Trade-off: loose scrutiny catches fewer near-miss answers (scrutinize catch on near-miss
 0.17→0.04). Strict alignment had been catching them partly by accident, through "quote not found".
@@ -335,8 +334,8 @@ items; verified to differ in exactly one token). Every page carries a revision h
 | Haiku cite + `lifecycle` retrieval + `warn_stale` | 0.92 | 0.92 | **1.00** | 0.0008 |
 | + llm_judge → abstain | 0.92 | 0.92 | 1.00 | 0.0014 |
 | + claim_decompose → abstain | 0.81 | 0.73 | 1.00 | 0.0014 |
-| gavel_contract → cite | 0.92 | 0.89 | 0.95 | 0.0010 |
-| full GAVEL | 0.84 | 0.84 | 1.00 | 0.0018 |
+| gavel_contract → cite | 0.92 | 0.89 | 0.49 | 0.0010 |
+| full GAVEL | 0.84 | 0.78 | 0.51 | 0.0018 |
 | Sonnet cite | 0.97 | 0.89 | 0.97 | 0.0136 |
 
 - **Stale rate is 0 for every combo.** No model answered with the superseded value when both revisions were in
@@ -344,9 +343,10 @@ items; verified to differ in exactly one token). Every page carries a revision h
   in-context supersession is solved at Haiku level.
 - Errors are over-abstention, not staleness. A second, conflicting revision costs 2–8 points on
   verifier combos. They abstain on conflict instead of resolving it (the `explain_conflict` case).
-- **For the BI platform, the risk is provenance loss.** Before the metadata fix, pipelines that
-  re-extract evidence (GAVEL contract, EvidenT) stripped the revision header. Their stale-only score
-  fell to about 0.5: they answered from a superseded source without warning. Version metadata must
+- **For the BI platform, the risk is provenance loss.** Pipelines that re-extract evidence (GAVEL
+  contract, EvidenT) strip the revision header from their quotes. Their stale-only score is about
+  0.5: they answer from a superseded source without warning. (A regex that carried the header
+  through was tried and removed, because it matched this eval's synthetic header format.) Version metadata must
   travel with every evidence unit through every stage. Metadata-driven filtering (`lifecycle`
   retrieval plus `warn_stale`) is deterministic, free, and reaches 1.00.
 - Caveat: the synthetic revisions are labelled explicitly. Real staleness, where a newer document
@@ -414,25 +414,9 @@ T5 122 of which near-miss 79, T6 29.)
 
 # Remaining plan items (second pass)
 
-## `column_check`: deterministic min/typ/max check (no LLM)
-
-`span_check`, plus one rule. When the question asks for a typical value, the claim is unsupported if
-the answer, or the evidence line holding the value, labels that value as a limit (max, min,
-"no higher than", ≤ …). Limit words that are part of the asked parameter's name are ignored.
-Generations come from cache, so the verifier itself costs $0.
-
-| | all | near-miss typ | T1 | T3 | false flags |
-|---|---|---|---|---|---|
-| dev (bm25, item scope, 3 repeats): cite | 0.903 | 0.466 | 0.959 | 1.0 | – |
-| dev: cite + column_check → abstain | **0.962** | **0.955** | 0.951 | 1.0 | 0.019 |
-| test (hybrid+MPN, corpus scope, 443 items): cite | 0.833 | 0.506 | 0.897 | 0.890 | – |
-| test: cite + column_check → abstain | **0.880** | **0.772** | 0.890 | 0.877 | – |
-
-- The rule was written after looking at dev. On held-out test it recovers 27 of the 49 points that
-  cite loses on near-miss, at no cost, and drops T1/T3 by one item each.
-- On test it beats every LLM verifier and the full GAVEL pipeline overall (0.880 vs 0.844), but not
-  on near-miss (0.77 vs 0.80).
-- This is the "GAVEL rule-based scrutiny" idea narrowed to the datasheet failure that matters.
+A datasheet-specific verifier rule (`column_check`: "typical asked, limit given") was tried here and
+removed. It was written after looking at dev items, so it is a fix for this eval, not a general
+QA improvement.
 
 ## One sub-query per entity for T4 (cross-doc comparisons)
 
@@ -494,8 +478,6 @@ spacing. The original (pymupdf) verdicts were restored. The pdfium verdicts are 
 Consequence for the final run, which uses pdfium text:
 - About 12% of near-miss-typ items (11 of 94) cannot be resolved from the text alone, which caps
   near-miss accuracy for every method.
-- `column_check` and GAVEL still score highest there, because they use limit words, not column
-  positions.
 - For production table QA, use a layout-preserving extractor (or table structure) for evidence
   text. pdfium's better reading order helps retrieval but hurts column semantics.
 
@@ -509,7 +491,6 @@ Measured cost of `final_datasheet_big.yaml`: $26.8.
 |---|---|---|---|---|---|---|---|---|---|
 | Opus cite | **0.911** | 0.89 | 0.95 | 0.90 | 0.69 | **0.91** | – | 0.97 | 0.0342 |
 | Sonnet cite | 0.891 | 0.88 | 0.92 | 0.88 | 0.69 | 0.89 | – | 0.97 | 0.0170 |
-| **Haiku cite + column_check → abstain** | 0.878 | 0.89 | 0.92 | 0.88 | 0.69 | 0.77 | 0.84 | 0.97 | **0.0009** |
 | full GAVEL, Haiku debaters + Sonnet judge | 0.864 | 0.87 | 0.85 | 0.89 | 0.69 | 0.80 | – | 0.90 | 0.0083 |
 | Haiku gavel_contract → cite | 0.865* | 0.87 | 0.93 | 0.86 | 0.69 | 0.76 | **1.00** | 0.93 | 0.0011 |
 | Haiku cite + per_entity | 0.837 | 0.90 | 0.92 | 0.89 | **0.85** | 0.51 | 0.84 | 0.97 | 0.0009 |
@@ -517,8 +498,8 @@ Measured cost of `final_datasheet_big.yaml`: $26.8.
 
 \* on the 443 original items.
 
-- **Haiku + `column_check` gets within 1.3 points of Sonnet and 3.3 points of Opus, at 1/19 and
-  1/38 of their cost.** The remaining gap is almost all near-miss-typ.
+- **The Haiku GAVEL evidence contract gets within 2.6 points of Sonnet at 1/15 of the cost** (0.865 vs
+  0.891). The remaining gap is mostly near-miss-typ (0.76 vs 0.89).
 - A Sonnet judge over Haiku debaters adds 2 points to full GAVEL (0.844 → 0.864) for 4.7× the cost.
   This tests the hypothesis noted in the dev results, and it does not beat plain Sonnet cite.
 - `near_miss_cond` (asked at 85 °C, stated at 25 °C) is easier than `near_miss_typ`. Haiku cite
@@ -531,8 +512,7 @@ Measured cost of `final_datasheet_big.yaml`: $26.8.
 - retrieve: hybrid + entity filter; per-entity sub-queries for comparisons
 - cull: none by default; GAVEL contract when abstention on unanswerables matters most
 - generate: cite with a small model
-- verify: deterministic domain rules (`column_check`) first; an LLM judge only for long-form output,
-  followed by revise
+- verify: none for single values; an LLM judge only for long-form output, followed by revise
 - lifecycle: revision metadata on every evidence unit
 - Keep layout-preserving text for tables (see the pdfium caveat above).
 
@@ -555,7 +535,6 @@ answering despite the wrong package, i.e. it took the trap; discarded per policy
 | Sonnet cite | 0.898 | 0.95 | 1.00 | 0.95 | 0.89 |
 | Haiku gavel_contract → cite | 0.876 | 0.95 | 1.00 | 1.00 | 0.76 |
 | Haiku full GAVEL | 0.876 | 0.95 | 1.00 | 1.00 | 0.80 |
-| Haiku cite + column_check | 0.876 | 0.75 | 1.00 | 0.84 | 0.77 |
 | Haiku cite | 0.833 | 0.75 | 1.00 | 0.84 | 0.51 |
 | Haiku cite + claim_decompose | 0.815 | **0.40** | 1.00 | 0.84 | 0.72 |
 
@@ -564,12 +543,12 @@ answering despite the wrong package, i.e. it took the trap; discarded per policy
 - On package questions Haiku cite misses 5/20. The GAVEL contract fixes most of them, because it
   forces the model to find the quote that names the package. claim_decompose wrongly rejects
   multiple-choice answers ("X is offered in A" with B and C mentioned as non-options).
-- With the full test set, the GAVEL contract and full GAVEL tie with `column_check` at 0.876.
+- With the full test set, the GAVEL contract and full GAVEL tie at 0.876, the best Haiku-priced result.
 
 ## How general are the fixes? (read before porting)
 
-The fixes are **generic** when they hold for any document QA. They are **domain rules** when they
-encode datasheet conventions, which a BI platform would need to replace with its own:
+Only fixes that hold for any document QA are kept. Fixes that encoded this eval's datasheet
+conventions or its synthetic data format were removed:
 
 | Change | Kind | Note |
 |---|---|---|
@@ -579,8 +558,8 @@ encode datasheet conventions, which a BI platform would need to replace with its
 | `per_entity` retrieval | generic | Needs an entity recognizer. Here: manifest part numbers; in BI: table/entity names |
 | GAVEL judge keeps source caveats | generic | |
 | `warn_stale` + `lifecycle` scope | generic mechanism | Needs revision metadata per document |
-| `_with_meta` (carry a doc's bracketed header line into extracted evidence) | **fitted** | Matches the synthetic lifecycle header format (`[... revision ...]`). A real system should attach version metadata as structured fields, not by regex |
-| `column_check` | **domain rule** | "Typical asked, limit given" is a datasheet convention. It was written after looking at dev items; held-out test confirms the gain (0.51 → 0.77 near-miss), but it does not transfer. The general lesson does: cheap deterministic checks for known domain failure modes beat LLM verifiers. In BI the analogue is checks like "asked for a total, answered with a single row" or "asked for Q3, cited Q2" |
 
-Headline comparisons that exclude the domain rule and the fitted header: on held-out test, Opus
-cite 0.920, Sonnet 0.898, Haiku + GAVEL contract 0.876, Haiku cite 0.833.
+Two eval-specific fixes were removed: `column_check` (a datasheet rule written after looking at dev)
+and a regex that carried this eval's synthetic revision header into extracted evidence. Every
+remaining fix is generic. Held-out test: Opus cite 0.920, Sonnet 0.898, Haiku + GAVEL contract 0.876,
+Haiku cite 0.833.

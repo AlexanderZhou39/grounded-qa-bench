@@ -22,7 +22,7 @@ retrieve → cull → generate → verify → repair
 | retrieve | `bm25`, `dense`, `hybrid`; params `mpn_filter`, `per_entity`, `lifecycle` | Hold fixed (cached) inside a comparison |
 | cull | `none`, `llm_filter`, `evident_align`, `gavel_contract` | Reduce or structure evidence before generation |
 | generate | `plain`, `cite`, `gavel_debate` | `cite` = forced claim-level citations to evidence ids |
-| verify | `none`, `span_check`, `column_check`, `nli_small`, `claim_decompose`, `gavel_scrutinize`, `llm_judge`, `cascade` | Produces `ClaimVerdict`s |
+| verify | `none`, `span_check`, `nli_small`, `claim_decompose`, `gavel_scrutinize`, `llm_judge`, `cascade` | Produces `ClaimVerdict`s |
 | repair | `none`, `drop_unsupported`, `regenerate`, `abstain`, `warn_stale` | Acts on verdicts |
 
 Reference mappings:

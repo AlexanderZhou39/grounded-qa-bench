@@ -202,62 +202,6 @@ class SpanCheckStage(BaseStage):
         return state
 
 
-_ASKS_TYP = re.compile(r"(?i)\btypical(ly)?\b|\btyp\b|\bnominal\b")
-_LIMIT = re.compile(
-    r"(?i)\b(max(imum)?|min(imum)?|no (higher|more|lower|less) than|not (to )?exceed|"
-    r"at (least|most)|up to)\b|[≤≥<>]"
-)
-
-
-def column_check_claim(claim: Claim, state: PipelineState, verifier: str) -> ClaimVerdict:
-    """span_check, plus a deterministic min/typ/max column check. When the question asks for a
-    typical value, the claim is unsupported if the answer or the evidence line holding the
-    value labels it as a limit (min, max, "no higher than", ...). Datasheets often give only
-    limits, and answering a limit as a typical value is the near-miss failure."""
-    v = span_check_claim(claim, state, verifier)
-    if v.verdict != Verdict.SUPPORTED or not _ASKS_TYP.search(state.question):
-        return v
-    value = _as_float(state.answer.value) if state.answer else None
-    lines = (
-        []
-        if value is None
-        else [
-            ln
-            for c in claim.citations
-            if (u := unit_map(state).get(c))
-            for ln in u.text.splitlines()
-            if contains_number(ln, value)
-        ]
-    )
-    q = state.question.lower()
-
-    def limit(text: str):  # a limit word that is not part of the asked parameter's name
-        return next((m for m in _LIMIT.finditer(text) if m.group(0).lower() not in q), None)
-
-    said = limit(" ".join([claim.text, state.answer.text if state.answer else ""]))
-    row = next((m for ln in lines if (m := limit(ln))), None)
-    if said or (row and not _ASKS_TYP.search(" ".join(lines))):
-        hit = (said or row).group(0)  # type: ignore[union-attr]
-        return v.model_copy(
-            update={
-                "verdict": Verdict.UNSUPPORTED,
-                "confidence": 0.7,
-                "rationale": f"typical value asked; value is labelled as a limit ({hit!r})",
-            }
-        )
-    return v
-
-
-class ColumnCheckStage(BaseStage):
-    slot = "verify"
-    name = "column_check"
-    uses_llm = False
-
-    def apply(self, state: PipelineState, llm: StageMeter) -> PipelineState:
-        state.verdicts = [column_check_claim(c, state, self.name) for c in _claims(state)]
-        return state
-
-
 class GavelScrutinizeStage(BaseStage):
     slot = "verify"
     name = "gavel_scrutinize"
