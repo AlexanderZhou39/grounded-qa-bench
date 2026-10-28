@@ -3,6 +3,7 @@
 run:
   name: sweep_dev
   items: data/items/dev.jsonl
+  corpus: data/local/corpus_pymupdf  # text extraction used for the published runs (pre-pdfium)
   repeats: 3
   concurrency: 8
   default_model: claude-haiku-5-5

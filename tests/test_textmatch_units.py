@@ -125,3 +125,10 @@ def test_tatqa_unit_free_scoring():
     assert numeric_correct(-1791790, None, item)  # sign-lenient
     assert not numeric_correct(1500.0, "million USD", item)
     assert as_number("2019") == 2019.0 and as_number("2018/2019") is None
+
+
+def test_find_tokens_window_at_page_end():
+    from gqb.textmatch import find_tokens
+
+    page = "filler " * 80 + "Gain Error\nsome condition text here\n-0.05 dB"
+    assert find_tokens("Gain Error -0.05 dB", page, 4.0, 60)

@@ -56,7 +56,7 @@ def build_manifest(
     allowlist: Path, source_dir: Path, pdf_dir: Path = PDF_DIR, manifest: Path = MANIFEST
 ) -> list[ManifestEntry]:
     """Copy allowlisted PDFs to ``pdf_dir/{doc_id}.pdf`` and write the manifest."""
-    import pymupdf as fitz
+    import pypdfium2 as pdfium
 
     spec = yaml.safe_load(allowlist.read_text())
     pdf_dir.mkdir(parents=True, exist_ok=True)
@@ -65,8 +65,7 @@ def build_manifest(
         src = source_dir / d["file"]
         dst = pdf_dir / f"{d['doc_id']}.pdf"
         shutil.copyfile(src, dst)
-        with fitz.open(dst) as doc:
-            pages = doc.page_count
+        pages = len(pdfium.PdfDocument(dst))
         entries.append(
             ManifestEntry(
                 doc_id=d["doc_id"],
@@ -94,25 +93,30 @@ def zip_pdfs(entries: list[ManifestEntry], out: Path, pdf_dir: Path = PDF_DIR) -
 def build_corpus(
     entries: list[ManifestEntry], pdf_dir: Path = PDF_DIR, corpus_dir: Path = CORPUS_DIR
 ) -> int:
-    """Extract text per page to ``corpus_dir/{doc_id}/{page:04d}.txt`` (1-indexed)."""
-    import pymupdf as fitz
+    """Extract text per page to ``corpus_dir/{doc_id}/{page:04d}.txt`` (1-indexed).
+    Uses pypdfium2 (Apache-2.0 / BSD-3-Clause; PDFium itself is BSD-style)."""
+    import pypdfium2 as pdfium
 
     n = 0
     for e in entries:
         out = corpus_dir / e.doc_id
         out.mkdir(parents=True, exist_ok=True)
-        with fitz.open(pdf_dir / f"{e.doc_id}.pdf") as doc:
-            for i, page in enumerate(doc, 1):
-                (out / f"{i:04d}.txt").write_text(page.get_text("text", sort=True))
-                n += 1
+        doc = pdfium.PdfDocument(pdf_dir / f"{e.doc_id}.pdf")
+        for i, page in enumerate(doc, 1):
+            (out / f"{i:04d}.txt").write_text(page.get_textpage().get_text_bounded())
+            n += 1
     return n
 
 
 def render_page_png(doc_id: str, page: int, dpi: int = 110, pdf_dir: Path = PDF_DIR) -> bytes:
-    import pymupdf as fitz
+    import io
 
-    with fitz.open(pdf_dir / f"{doc_id}.pdf") as doc:
-        return doc[page - 1].get_pixmap(dpi=dpi).tobytes("png")
+    import pypdfium2 as pdfium
+
+    image = pdfium.PdfDocument(pdf_dir / f"{doc_id}.pdf")[page - 1].render(scale=dpi / 72).to_pil()
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def chunk_page(text: str, max_chars: int = CHUNK_CHARS) -> list[str]:
@@ -149,6 +153,14 @@ class Corpus:
         pages = self.pages(doc_id)
         return pages[page - 1] if 1 <= page <= len(pages) else ""
 
+    @cached_property
+    def fingerprint(self) -> str:
+        """Changes whenever any page text changes (e.g. after re-extraction)."""
+        h = hashlib.sha256()
+        for f in sorted(self.root.glob("*/*.txt")):
+            h.update(f"{f.parent.name}/{f.name}:{f.stat().st_size}".encode())
+        return h.hexdigest()[:16]
+
     def full_text(self, doc_id: str) -> str:
         return "\n".join(self.pages(doc_id))
 
@@ -161,7 +173,8 @@ class Corpus:
 
     @cached_property
     def manifest(self) -> dict[str, ManifestEntry]:
-        return {e.doc_id: e for e in read_manifest(self.root.parent / "manifest.jsonl")}
+        local = self.root.parent / "manifest.jsonl"
+        return {e.doc_id: e for e in read_manifest(local if local.exists() else MANIFEST)}
 
 
 def write_jsonl(path: Path, rows: list[BaseModel] | list[dict]) -> None:

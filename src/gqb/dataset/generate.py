@@ -115,6 +115,7 @@ class Generator:
         self.corpus = corpus
         self.manifest = manifest
         self.rng = random.Random(seed)
+        self._near_miss_pool: dict[str, list[Fact]] = {}
         self.by_doc: dict[str, list[Fact]] = defaultdict(list)
         for f in facts:
             if _usable(f):
@@ -304,26 +305,29 @@ class Generator:
             )
         return out
 
-    def near_miss(self, doc_id: str, k: int) -> list[BenchItem]:
+    def near_miss(self, doc_id: str, k: int, skip: int = 0) -> list[BenchItem]:
         """Harder tier 5: ask for the *typical* value of a parameter the doc states only as a
         min and/or max limit (no row of that parameter anywhere in the doc has a typ). The
         part, parameter and table all exist, so a model that answers with the limit is wrong."""
         entry = self.manifest[doc_id]
-        has_typ = {_pkey(f) for f in self.by_doc[doc_id] if f.typ is not None}
-        rows = defaultdict(list)
-        for f in self.by_doc[doc_id]:
-            rows[_pkey(f)].append(f)
-        pool = [
-            fs[0]
-            for key, fs in sorted(rows.items())
-            if len(fs) == 1
-            and key not in has_typ
-            and fs[0].section in (Section.ELECTRICAL, Section.RECOMMENDED, Section.THERMAL)
-            and (fs[0].min is not None or fs[0].max is not None)
-        ]
-        self.rng.shuffle(pool)
+        if doc_id not in self._near_miss_pool:  # shuffled once, so later passes extend it
+            has_typ = {_pkey(f) for f in self.by_doc[doc_id] if f.typ is not None}
+            rows = defaultdict(list)
+            for f in self.by_doc[doc_id]:
+                rows[_pkey(f)].append(f)
+            pool = [
+                fs[0]
+                for key, fs in sorted(rows.items())
+                if len(fs) == 1
+                and key not in has_typ
+                and fs[0].section in (Section.ELECTRICAL, Section.RECOMMENDED, Section.THERMAL)
+                and (fs[0].min is not None or fs[0].max is not None)
+            ]
+            self.rng.shuffle(pool)
+            self._near_miss_pool[doc_id] = pool
+        pool = self._near_miss_pool[doc_id]
         out = []
-        for f in pool[:k]:
+        for f in pool[skip:k]:
             q = f"What is the typical {_label(f)} of the {entry.mpn}{SECTION_PHRASE[f.section]}"
             if f.conditions:
                 q += f", under the condition(s): {_conds(f)}"
@@ -499,8 +503,11 @@ class Generator:
             ].mpn
         # appended last so adding tier 4 does not change earlier items' ids or RNG draws
         items += self.cross_doc(per_family_cross)
+        # appended in passes so that raising near_miss_per_doc never renumbers existing items
         for doc_id in sorted(self.by_doc):
-            items += self.near_miss(doc_id, near_miss_per_doc)
+            items += self.near_miss(doc_id, min(2, near_miss_per_doc))
+        for doc_id in sorted(self.by_doc):
+            items += self.near_miss(doc_id, near_miss_per_doc, skip=2)
         return items
 
 

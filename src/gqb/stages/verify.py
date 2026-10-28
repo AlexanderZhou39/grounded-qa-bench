@@ -9,6 +9,7 @@
 - claim_decompose  : rag-facts-check style. LLM re-decomposes the answer text into atomic
                      claims, then a second call verifies each with a quote; quotes are aligned
                      deterministically and a claim is supported only if its quote aligns.
+- nli_small        : local NLI cross-encoder, sentence x evidence-window max entailment.
 - cascade          : cheap deterministic verifier first; claims under ``escalate_below``
                      confidence go to an expensive LLM verifier.
 
@@ -18,7 +19,9 @@ citing all evidence.
 
 from __future__ import annotations
 
-from typing import Literal
+import re
+import threading
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -367,4 +370,84 @@ class CascadeStage(BaseStage):
         }
         state.verdicts = [judged.get(v.claim_id, v) for v in first]
         state.scratch["cascade_escalated"] = len(escalate)
+        return state
+
+
+_NLI: dict[str, Any] = {}
+_SENT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
+
+
+_NLI_LOCK = threading.Lock()
+
+
+def _nli_model(name: str):
+    with _NLI_LOCK:
+        return _load_nli(name)
+
+
+def _load_nli(name: str):
+    if name not in _NLI:
+        import os
+
+        from sentence_transformers import CrossEncoder
+
+        _NLI[name] = CrossEncoder(name, device=os.environ.get("GQB_DEVICE", "cpu"))
+    return _NLI[name]
+
+
+def _windows(text: str, size: int = 1200, stride: int = 900) -> list[str]:
+    if len(text) <= size:
+        return [text]
+    return [text[i : i + size] for i in range(0, max(1, len(text) - size + stride), stride)]
+
+
+class NLISmallStage(BaseStage):
+    """Local NLI cross-encoder (extra ``local``; CPU by default), SummaC-style: the claim is
+    split into sentences, each scored against overlapping windows of its cited evidence, and a
+    sentence counts as entailed if any window entails it. Claim verdict: all sentences entailed
+    -> supported; a sentence contradicted (and not entailed) -> contradicted; else unsupported.
+    Params: ``nli_model``, ``threshold`` (entailment probability, default 0.5)."""
+
+    slot = "verify"
+    name = "nli_small"
+    uses_llm = False
+
+    def apply(self, state: PipelineState, llm: StageMeter) -> PipelineState:
+        import numpy as np
+
+        model = _nli_model(self.params.get("nli_model", "cross-encoder/nli-deberta-v3-base"))
+        labels = {v.lower(): k for k, v in model.model.config.id2label.items()}
+        thr = float(self.params.get("threshold", 0.5))
+        units = unit_map(state)
+        verdicts = []
+        for c in _claims(state):
+            premises = [w for cid in c.citations if cid in units for w in _windows(units[cid].text)]
+            if not premises:
+                verdicts.append(
+                    ClaimVerdict(claim_id=c.id, verdict=Verdict.UNSUPPORTED, verifier=self.name)
+                )
+                continue
+            sents = [s for s in _SENT.split(c.text.strip()) if len(s.split()) >= 3] or [c.text]
+            pairs = [(p, s) for s in sents for p in premises]
+            logits = np.asarray(model.predict(pairs, batch_size=32))
+            probs = np.exp(logits - logits.max(1, keepdims=True))
+            probs /= probs.sum(1, keepdims=True)
+            probs = probs.reshape(len(sents), len(premises), -1)
+            ent = probs[:, :, labels["entailment"]].max(1)
+            con = probs[:, :, labels["contradiction"]].max(1)
+            if (ent >= thr).all():
+                verdict = Verdict.SUPPORTED
+            elif ((con >= thr) & (ent < thr)).any():
+                verdict = Verdict.CONTRADICTED
+            else:
+                verdict = Verdict.UNSUPPORTED
+            verdicts.append(
+                ClaimVerdict(
+                    claim_id=c.id,
+                    verdict=verdict,
+                    confidence=float(ent.min()),
+                    verifier=self.name,
+                )
+            )
+        state.verdicts = verdicts
         return state

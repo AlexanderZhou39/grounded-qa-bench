@@ -40,6 +40,9 @@ uv run bench fetch-external tatqa && uv run bench run configs/tatqa.yaml
 uv run bench report runs/tatqa --items data/external/tatqa/items.jsonl
 uv run bench fetch-external ragtruth && uv run bench vtrack --verifier llm_judge --model claude-haiku-5-5
 uv run bench facts --n 40          # long-form + FACTS judge; generator "{model}+repair" = verify->revise
+uv sync --extra local              # CPU models for dense/hybrid retrieval and nli_small
+uv run bench run configs/sweep_retrieval.yaml
+# final run: docs/FINAL_RUN.md
 ```
 
 ## Adding a stage
@@ -56,8 +59,11 @@ uv run bench facts --n 40          # long-form + FACTS judge; generator "{model}
 - Every model call goes through `LLMClient`. Stages never import provider SDKs directly; otherwise
   cost and latency attribution breaks.
 - Every `Stage.run` appends exactly one `StageTrace` (summed tokens, cost and latency of all calls in the stage).
-- `retrieve` is deterministic BM25 (index cached on disk), so every combo sees identical candidates. Comparisons
-  are only valid when candidates are held fixed.
+- `retrieve` is deterministic (BM25 / dense / hybrid, cached on disk), so every combo with the same
+  retriever sees identical candidates. Comparisons are only valid when candidates are held fixed.
+- Pipeline components must be permissively licensed (Apache/MIT/BSD). Evaluation data may carry
+  other licences; never vendor it into the repo.
+- LLM backend is pluggable: see docs/ADAPTERS.md. Stages must not assume a provider.
 - The judge model used by `score.py` for free-text answers must not appear in the combo being scored.
 - Scoring buckets by `Tier`. Don't report only a single overall number.
 - Do not commit PDFs, generated page text, `runs/`, API keys, or any non-public data.

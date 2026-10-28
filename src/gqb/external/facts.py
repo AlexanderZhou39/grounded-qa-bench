@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from gqb.corpus import Corpus, chunk_page
 from gqb.external import EXTERNAL, fetch
-from gqb.llm import CachedClient, LLMClient, Message, StageMeter
+from gqb.llm import CachedClient, LLMClient, Message, PendingAnswer, StageMeter
 from gqb.schemas import Answer, EvidenceUnit, PipelineState, Verdict
 from gqb.stages import REGISTRY, StageContext
 
@@ -166,6 +166,19 @@ def run(
     client = CachedClient(llm, cache_dir)
 
     def one(e: FactsExample) -> FactsResult:
+        try:
+            return _one(e)
+        except PendingAnswer:  # out-of-band backend; rerun after answering
+            return FactsResult(
+                example_id=e.id,
+                generator=generator,
+                response="",
+                accurate=None,
+                gen_cost_usd=0.0,
+                judge_cost_usd=0.0,
+            )
+
+    def _one(e: FactsExample) -> FactsResult:
         resp, cost = generate(e, client, model)
         n_bad = None
         if mode == "repair":

@@ -229,7 +229,74 @@ generator here. One judge, no eligibility filter, so the numbers are not leaderb
 ## Not done in Phase 3 (and why)
 
 - **LLM-AggreFact**: gated on Hugging Face (403 until the terms are accepted). The adapter would
-  be ~40 lines on top of `vtrack.VPair`. Accept the terms with a *personal* HF token, then add
+  be ~40 lines on top of `vtrack.VPair`. Accept the dataset terms on Hugging Face and set `HF_TOKEN`, then add
   `external/aggrefact.py`.
 - **HOVER**: needs a Wikipedia dump plus retrieval to be a grounded task. Deferred.
 - **FinQA**: TAT-QA covers the same table+text arithmetic niche.
+
+# Retrieval, near-miss expansion, local NLI (2026-10-27)
+
+## Retrieval at corpus scope (`configs/sweep_retrieval.yaml`, Haiku cite, 108 dev items, CPU)
+
+| Retriever | acc | T1 | T2 | T3 | T4 | $/item |
+|---|---|---|---|---|---|---|
+| bm25 | 0.833 | 0.90 | 0.94 | 0.67 | 0.33 | 0.00090 |
+| dense (bge-small-en-v1.5) | 0.713 | 0.68 | 0.47 | 0.76 | 0.67 | 0.00089 |
+| hybrid (RRF k=60) | 0.833 | 0.90 | 0.71 | 0.76 | 0.67 | 0.00091 |
+| bm25 + MPN filter | 0.917 | 0.93 | 0.94 | 1.00 | 1.00 | 0.00082 |
+| **hybrid + MPN filter** | **0.935** | 0.95 | 1.00 | 1.00 | 1.00 | 0.00084 |
+| hybrid + MPN filter, top_k 16 | 0.935 | 0.98 | 1.00 | 1.00 | 1.00 | 0.00132 |
+
+(Item scope, where gold docs are given, scores 0.932 for the same generator.)
+
+- **The entity filter closes the corpus-scope gap.** Restricting retrieval to documents whose part
+  number appears in the question recovers essentially all of the 14 points lost at corpus scope.
+  For the BI platform this corresponds to resolving entities (customer, product, period) before
+  retrieval. It is cheap and deterministic, and it is worth more than a better embedding model.
+- Dense alone is the worst option on datasheets. Small embedding models do not separate near-identical
+  parameter tables across parts, and they lose exact symbols (`VOH`, `tPD`). Hybrid only helps once the
+  scope is right.
+- Embedding the full 2431-page corpus with bge-small takes about 6 minutes on CPU, once (cached).
+  After that, queries are milliseconds.
+
+## Near-miss unanswerables, expanded (94 cross-check-confirmed: dev 15→18 shown below, test 79)
+
+`bench make-items --near-miss-per-doc 6` added 68 items. The Opus cross-check confirmed 57 of them
+(the rest went to `disputed`). The dev near-miss slice (15 items × 3 repeats = 45 answers) at item scope:
+
+| Combo | near-miss acc | $/item |
+|---|---|---|
+| Opus cite | 0.93 | 0.0256 |
+| **Full GAVEL (contract → debate → scrutinize), Haiku** | **0.89** | 0.0016 |
+| Sonnet cite | 0.87 | 0.0126 |
+| gavel_contract → cite | 0.67 | 0.0010 |
+| claim_decompose verify | 0.64 | 0.0011 |
+| EvidenT align (Haiku) → Sonnet cite | 0.64 | 0.0052 |
+| gavel_scrutinize / cascade | 0.49–0.56 | 0.0007–0.0019 |
+| llm_judge verify | 0.47 | 0.0010 |
+| Haiku cite (baseline) | 0.47 | 0.0007 |
+| EvidenT align → Haiku cite | 0.42 | 0.0008 |
+
+The earlier finding holds at larger n. Full GAVEL makes Haiku about as good as Sonnet on the
+"answer with the limit when only a limit is stated" trap, at an eighth of the cost. The contract step
+alone gets about half of that gain. Post-hoc verifiers (llm_judge, span checks) do not help. The wrong
+answer cites a real quote with a real number, so it *is* supported by the evidence; only the
+question's premise is wrong.
+
+## nli_small: off-the-shelf NLI cross-encoder as verifier (RAGTruth, 150 pairs, CPU)
+
+| Verifier | P | R | F1 | BAcc | $/pair | time |
+|---|---|---|---|---|---|---|
+| nli_small (nli-deberta-v3-base, threshold 0.5) | 0.51 | 0.97 | 0.67 | 0.51 | 0 | ~11 min |
+| nli_small, threshold calibrated on half, scored on other half | | | 0.66 | 0.57 | 0 | |
+| llm_judge Haiku | 0.67 | 0.91 | 0.77 | 0.73 | 0.0005 | |
+| llm_judge Sonnet | 0.67 | 0.96 | 0.79 | 0.74 | 0.0058 | |
+| claim_decompose Haiku | 0.59 | 0.99 | 0.74 | 0.65 | 0.0011 | |
+
+(Raw counts at 50% hallucination prevalence; the prevalence-reweighted F1 for the LLM verifiers is above.)
+
+A general NLI model trained on MNLI/SNLI is near chance on RAG responses, even with a tuned
+threshold. Sentence-level entailment over 1200-character windows does not handle numbers, tables or
+paraphrase well enough. It is not a usable free cascade stage in this form. A grounding-specific
+small model (MiniCheck-style, trained on synthetic grounding data) would be the next thing to
+try. Haiku llm_judge at $0.0005/pair is the cheap verifier to beat.

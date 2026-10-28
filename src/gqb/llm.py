@@ -412,3 +412,117 @@ class RoutingClient:
             return self._anthropic.complete(messages, model, **kw)
         self._openai = self._openai or OpenAICompatClient()
         return self._openai.complete(messages, model, **kw)
+
+
+# ---------------------------------------------------------------------------
+# Pluggable backends
+# ---------------------------------------------------------------------------
+
+
+class ModelMapClient:
+    """Wraps any backend: maps the benchmark's logical model ids (``claude-haiku-5-5``, ...)
+    to backend ids via ``model_map``, and fills ``cost_usd`` at public list prices (``PRICES``,
+    keyed by the logical id) when the backend reports none. Results keep the logical id, so
+    cache keys, configs and reports do not change when the backend does."""
+
+    def __init__(self, inner: LLMClient, model_map: dict[str, str] | None = None):
+        self.inner = inner
+        self.model_map = model_map or {}
+
+    def complete(
+        self,
+        messages: list[Message],
+        model: str,
+        *,
+        system: str | None = None,
+        response_model: type[T] | None = None,
+        max_tokens: int = 4096,
+        effort: str | None = None,
+    ) -> LLMResult:
+        res = self.inner.complete(
+            messages,
+            self.model_map.get(model, model),
+            system=system,
+            response_model=response_model,
+            max_tokens=max_tokens,
+            effort=effort,
+        )
+        cost = res.cost_usd or cost_usd(model, res.in_tok, res.out_tok)
+        return res.model_copy(update={"model": model, "cost_usd": cost})
+
+
+class PendingAnswer(RuntimeError):
+    """Raised by FileQueueClient for a request that has no answer file yet."""
+
+
+class FileQueueClient:
+    """Backend for answering requests out of band, e.g. by a coding agent or a human.
+
+    Each unanswered request is written to ``{root}/requests/{key}.json`` (system, messages,
+    model, and the JSON schema when structured output is required) and ``PendingAnswer`` is
+    raised. Whoever answers writes ``{root}/answers/{key}.json`` as ``{"text": "..."}``. For
+    structured requests the text must be a JSON object matching the schema. Re-running the
+    same command then picks the answers up. Token counts are estimated as chars/4 so that
+    cost columns still show public-rate equivalents."""
+
+    def __init__(self, root: str | Path = ".queue"):
+        self.root = Path(root)
+
+    def complete(
+        self,
+        messages: list[Message],
+        model: str,
+        *,
+        system: str | None = None,
+        response_model: type[T] | None = None,
+        max_tokens: int = 4096,
+        effort: str | None = None,
+    ) -> LLMResult:
+        req = {
+            "model": model,
+            "system": system,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "schema": response_model.model_json_schema() if response_model else None,
+            "max_tokens": max_tokens,
+        }
+        key = hashlib.sha256(json.dumps(req, sort_keys=True).encode()).hexdigest()[:24]
+        ans = self.root / "answers" / f"{key}.json"
+        if not ans.exists():
+            path = self.root / "requests" / f"{key}.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(req, indent=1))
+            raise PendingAnswer(f"PendingAnswer {key}")
+        text = json.loads(ans.read_text())["text"]
+        parsed = response_model.model_validate(extract_json(text)) if response_model else None
+        in_tok = (sum(len(m.content) for m in messages) + len(system or "")) // 4
+        out_tok = len(text) // 4
+        return LLMResult(
+            text=text,
+            parsed=parsed,
+            model=model,
+            in_tok=in_tok,
+            out_tok=out_tok,
+            cost_usd=cost_usd(model, in_tok, out_tok),
+        )
+
+
+def load_client() -> LLMClient:
+    """Backend selection, by environment:
+
+    - ``GQB_LLM_CLIENT=package.module:factory``: any zero-arg callable returning an object with
+      the ``LLMClient.complete`` signature (your own gateway, a proxy, ...)
+    - ``GQB_LLM_CLIENT=queue`` (optionally ``GQB_QUEUE_DIR``): ``FileQueueClient``
+    - unset: ``RoutingClient`` (Anthropic SDK for ``claude-*``, OpenAI-compatible otherwise)
+
+    ``GQB_MODEL_MAP`` (JSON object) maps logical model ids to backend ids."""
+    import importlib
+
+    spec = os.environ.get("GQB_LLM_CLIENT", "").strip()
+    if spec == "queue":
+        inner: LLMClient = FileQueueClient(os.environ.get("GQB_QUEUE_DIR", ".queue"))
+    elif spec:
+        mod, _, attr = spec.partition(":")
+        inner = getattr(importlib.import_module(mod), attr or "make_client")()
+    else:
+        inner = RoutingClient()
+    return ModelMapClient(inner, json.loads(os.environ.get("GQB_MODEL_MAP", "{}") or "{}"))

@@ -101,4 +101,6 @@ These are simplified adaptations, not reproductions. Fidelity checks against the
 | rag-facts-check repair (long-form) | `bench facts` `{model}+repair` | `external/facts.py` | claim_decompose finds unsupported atomic claims; one call rewrites the response without them | One revise round |
 | FACTS Grounding judge | `bench facts` | `external/facts.py` | FACTS `response_level` prompt (downloaded at runtime) on a fixed judge model | 1 judge, not 3; no eligibility filter |
 | Verifier track | `bench vtrack` | `vtrack.py` | Any verify impl scored on (context, response, label) pairs; P/R/F1/BAcc | RAGTruth now; LLM-AggreFact pending access |
+| Local NLI verifier (SummaC-style) | verify `nli_small` | `stages/verify.py` | Per answer sentence, max entailment over 1200-char windows of cited units (cross-encoder nli-deberta-v3-base, CPU) | Off-the-shelf MNLI model; no grounding fine-tune |
+| Retrieval | retrieve `bm25` / `dense` / `hybrid` | `retrieve.py` | BM25; bge-small-en-v1.5 embeddings (cached per doc); RRF fusion (k=60). `mpn_filter` restricts scope to docs whose part number is in the question | No reranker |
 | Vera-Life, VeriFastScore | — | — | Not implemented (see ROADMAP) | — |

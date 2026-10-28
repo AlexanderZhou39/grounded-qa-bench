@@ -29,9 +29,9 @@ def _read_jsonl(path: Path) -> list[dict]:
 
 
 def _llm():
-    from gqb.llm import CachedClient, RoutingClient
+    from gqb.llm import CachedClient, load_client
 
-    return CachedClient(RoutingClient())
+    return CachedClient(load_client())
 
 
 # ---------------------------------------------------------------------------
@@ -113,15 +113,21 @@ def extract_facts(
 
 
 @app.command("make-items")
-def make_items(seed: int = 13) -> None:
+def make_items(
+    seed: int = 13,
+    near_miss_per_doc: int = 2,
+    corpus_dir: Path = typer.Option(None, help="Corpus the facts were extracted from"),
+) -> None:
     """Deterministically generate tiered items from facts -> data/local/items_raw.jsonl."""
     from gqb.corpus import Corpus, write_jsonl
     from gqb.dataset.extract import Fact
     from gqb.dataset.generate import Generator
 
-    corpus = Corpus()
+    corpus = Corpus(corpus_dir) if corpus_dir else Corpus()
     facts = [Fact.model_validate(r) for r in _read_jsonl(LOCAL / "facts.jsonl")]
-    items = Generator(facts, corpus, corpus.manifest, seed=seed).generate()
+    items = Generator(facts, corpus, corpus.manifest, seed=seed).generate(
+        near_miss_per_doc=near_miss_per_doc
+    )
     write_jsonl(LOCAL / "items_raw.jsonl", items)
     typer.echo(dict(collections.Counter(f"T{int(i.tier)}" for i in items)))
 
@@ -131,6 +137,7 @@ def qc(
     para_model: str = "claude-haiku-5-5",
     check_model: str = "claude-opus-5-5",
     workers: int = 6,
+    corpus_dir: Path = typer.Option(None, help="Corpus the items were generated from"),
 ) -> None:
     """Paraphrase questions, then independently cross-check every item against its pages.
     -> data/local/items_qc.jsonl"""
@@ -138,7 +145,7 @@ def qc(
     from gqb.dataset.qc import crosscheck, paraphrase
     from gqb.llm import StageMeter
 
-    corpus, llm = Corpus(), _llm()
+    corpus, llm = (Corpus(corpus_dir) if corpus_dir else Corpus()), _llm()
     items = [BenchItem.model_validate(r) for r in _read_jsonl(LOCAL / "items_raw.jsonl")]
     m1 = StageMeter(llm, "qc", "paraphrase")
     with m1:
@@ -245,7 +252,7 @@ def validate_items(path: Path, check_quotes: bool = True) -> None:
     """Schema-validate a BenchItem JSONL file, check invariants and (if the corpus is built)
     that every gold quote is found on its page."""
     from gqb.corpus import CORPUS_DIR, Corpus
-    from gqb.textmatch import find_span
+    from gqb.textmatch import find_span, find_tokens
 
     corpus = Corpus() if check_quotes and CORPUS_DIR.exists() else None
     errors = 0
@@ -272,7 +279,10 @@ def validate_items(path: Path, check_quotes: bool = True) -> None:
             if not text:
                 typer.echo(f"line {n}: {ev.doc_id} page {ev.page} missing")
                 errors += 1
-            elif ev.quote and not find_span(ev.quote, text):
+            # order-free fallback: PDF extractors differ in how they serialize table rows
+            elif ev.quote and not (
+                find_span(ev.quote, text) or find_tokens(ev.quote, text, 4.0, 60)
+            ):
                 typer.echo(f"line {n}: quote not found on {ev.doc_id} p{ev.page}")
                 errors += 1
     typer.echo(f"{len(seen)} items, {errors} errors" + ("" if corpus else " (quotes unchecked)"))
@@ -352,7 +362,7 @@ def run(
 ) -> None:
     """Run every combo in CONFIG over its item split. Resumable; LLM calls are disk-cached."""
     from gqb.corpus import Corpus
-    from gqb.llm import RoutingClient
+    from gqb.llm import load_client
     from gqb.runner import load_config, load_items, run_combo
 
     cfg = load_config(config)
@@ -363,7 +373,7 @@ def run(
     for spec in cfg.combos:
         if only and not any(o in spec.combo_id for o in only):
             continue
-        out = run_combo(spec, items, cfg.run, RoutingClient(), corpus)
+        out = run_combo(spec, items, cfg.run, load_client(), corpus)
         typer.echo(f"wrote {out}")
 
 
@@ -404,15 +414,16 @@ def vtrack(
     """Verifier track: score verify stages on (context, response, label) pairs.
     Writes {out}/{verifier}@{model}.jsonl and prints P/R/F1/BAcc per task."""
     from gqb.corpus import write_jsonl
-    from gqb.llm import RoutingClient
-    from gqb.vtrack import load_pairs, metrics, run_verifier
+    from gqb.llm import load_client
+    from gqb.vtrack import calibrate, load_pairs, metrics, run_verifier
 
     ps = load_pairs(pairs)[:limit] if limit else load_pairs(pairs)
     out.mkdir(parents=True, exist_ok=True)
-    summary = {}
+    summary_path = out / "summary.json"
+    summary = json.loads(summary_path.read_text()) if summary_path.exists() else {}
     for v in verifier:
         for m in model:
-            res = run_verifier(v, m, ps, RoutingClient())
+            res = run_verifier(v, m, ps, load_client())
             write_jsonl(out / f"{v}@{m}.jsonl", res)
             summary[f"{v}@{m}"] = met = metrics(res)
             for task, r in met.items():
@@ -421,7 +432,11 @@ def vtrack(
                     f"R={r['recall']:.3f} F1={r['f1']:.3f} BAcc={r['bacc']:.3f} "
                     f"err={r['error_rate']:.2f} ${r['cost_per_pair']:.5f}/pair"
                 )
-    (out / "summary.json").write_text(json.dumps(summary, indent=1))
+            if any(x.score is not None for x in res) and v in ("nli_small",):
+                cal = calibrate(res)
+                met["calibrated"] = cal
+                typer.echo(f"{v}@{m} calibrated on half: {cal}")
+    summary_path.write_text(json.dumps(summary, indent=1))
 
 
 @app.command("facts")
@@ -437,13 +452,13 @@ def facts_cmd(
     """FACTS Grounding track: long-form answers judged with FACTS's response-level prompt."""
     from gqb.corpus import write_jsonl
     from gqb.external import facts
-    from gqb.llm import RoutingClient
+    from gqb.llm import load_client
 
     path = facts.ROOT / "examples.jsonl"
     ex = facts.load() if path.exists() else facts.build(n=n)
     out.mkdir(parents=True, exist_ok=True)
     for g in generator:
-        res = facts.run(g, judge, RoutingClient(), ex[:n])
+        res = facts.run(g, judge, load_client(), ex[:n])
         write_jsonl(out / f"{g}.jsonl", res)
         judged = [r for r in res if r.accurate is not None]
         acc = sum(r.accurate for r in judged) / len(judged) if judged else 0.0

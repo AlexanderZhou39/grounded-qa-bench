@@ -1,0 +1,15 @@
+# Bigger-model reference rows for the final run (1 repeat; ~$24 at public list prices).
+run:
+  name: final_datasheet
+  items: data/items/test.jsonl
+  repeats: 1
+  concurrency: 8
+  top_k: 8
+  scope: corpus
+  default_model: claude-haiku-5-5
+  effort: low
+combos:
+  - {retrieve: hybrid, generate: cite, models: {generate: claude-sonnet-5-5}, params: {retrieve: {mpn_filter: true}}}
+  - {retrieve: hybrid, generate: cite, models: {generate: claude-opus-5-5}, params: {retrieve: {mpn_filter: true}}}
+  # untested hypothesis from RESULTS: Haiku debaters + Sonnet judge on near-miss unanswerables
+  - {retrieve: hybrid, cull: gavel_contract, generate: gavel_debate, verify: gavel_scrutinize, repair: abstain, params: {retrieve: {mpn_filter: true}, generate: {judge_model: claude-sonnet-5-5}}}

@@ -103,10 +103,15 @@ def _ctx(corpus):
     return StageContext(corpus=corpus, retriever=BM25Retriever(corpus, cache_dir=None), top_k=2)
 
 
+LOCAL_EXTRA = {"dense", "hybrid", "nli_small"}  # need the optional `local` extra (models)
+
+
 def _combos():
     yield ComboSpec()
     for slot in ("cull", "generate", "verify", "repair"):
         for impl in REGISTRY[slot]:
+            if impl in LOCAL_EXTRA:
+                continue
             kw = {"generate": "cite", slot: impl}
             if slot == "repair":
                 kw["verify"] = "span_check"

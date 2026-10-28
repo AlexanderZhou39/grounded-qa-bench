@@ -4,7 +4,7 @@
 - [x] `schemas.py`, `stage.py`, `llm.py`, CLI, tests
 - [x] DESIGN, METHODS, DATASET docs
 
-## Phase 1: datasheet dataset (done on the author's machine; see docs/DATASET.md)
+## Phase 1: datasheet dataset (requires the PDFs; see docs/DATASET.md)
 - [x] `tools/export/corpus_allowlist.yaml` → `bench build-manifest` (copy/rename, sha256, zip)
 - [x] `bench build-corpus`: per-page text into `data/corpus/{doc_id}/{page:04d}.txt`
 - [x] `bench extract-facts`: fresh LLM extraction with verbatim-quote checks. This replaced the
@@ -14,12 +14,12 @@
 - [x] `bench split` → dev / test / disputed, plus `data/items/STATS.md`
 - [x] `bench validate-items`: every gold quote is found on its page
 - [x] `bench audit`: interactive human audit, with `--apply`
-- [ ] Human audit, scoped down: spot-check the slices the findings rest on (6 near-miss T5 dev
-      items and 3 T4 items). The 24 disputed items are excluded and can be discarded; generate
-      more near-miss/T4 items instead.
+- [x] Human audit replaced: disputed items are discarded, not adjudicated. Near-miss coverage was
+      raised instead (`--near-miss-per-doc 6`, Opus cross-check) to 94 confirmed items (test 79).
+      Optional: spot-check the 15 dev near-miss items with `bench audit`.
 - [x] Tier 4 (cross-doc comparison), 16 items, all cross-check agree. More need more same-family docs.
 - [x] Harder tier 5, first kind: `near_miss_typ` asks for typ when only min/max is stated
-      (37 cross-check-confirmed items; Haiku cite scores 0.33). Reported as bucket `5:near_miss_typ`.
+      (94 cross-check-confirmed items; Haiku cite 0.47, full GAVEL 0.89). Reported as bucket `5:near_miss_typ`.
 - [ ] More near-miss kinds: wrong condition, wrong variant or package
 - [ ] More text/enum items (package type, interface, pin function). Currently numeric only.
 
@@ -37,14 +37,21 @@
 - [x] FakeClient end-to-end tests over every stage; Haiku smoke run; cache-only rerun verified
 - [x] First dev sweep (`configs/sweep_dev.yaml`, Haiku-centric + Sonnet/Opus generator rows, 3 repeats). Results: `docs/RESULTS.md`
 - [x] `scope: corpus` runs (`configs/sweep_corpus.yaml`). Retrieval is the bottleneck (RESULTS.md)
-- [ ] Retrievers `dense` / `hybrid`, MPN filtering, one sub-query per entity for T4
+- [x] Retrievers `dense` (bge-small, CPU) / `hybrid` (RRF), `mpn_filter` entity scope. Hybrid+MPN
+      recovers the corpus-scope gap (0.833→0.935)
+- [ ] One sub-query per entity for T4
 - [ ] `column_check` verifier (deterministic typ/min/max column check). See RESULTS.md "next"
-- [ ] `nli_small` verifier (local NLI cross-encoder, e.g. via sentence-transformers; heavy deps,
-      so make it an optional extra)
-- [ ] Verifier track: score verifiers directly on (claim, evidence, label) pairs harvested from
-      runs. Labels come from item correctness: a claim stating the wrong value should be unsupported.
-- [ ] Free-text answers plus a fixed judge (the judge model must not appear in the scored combo)
-- [ ] Vera-Life-style lifecycle handling (stale/superseded facts). Needs versioned docs; design first.
+- [x] `nli_small` verifier (nli-deberta-v3-base, extra `local`). Near chance on RAGTruth (BAcc 0.57
+      calibrated). Next: a grounding-trained small checker
+- [x] Verifier track: done on RAGTruth (`bench vtrack`). Harvesting pairs from datasheet runs is
+      still open
+- [x] Free-text answers plus a fixed judge: FACTS track (`bench facts`). The judge must differ from the
+      generator (enforced). The judge can run through the file queue (docs/ADAPTERS.md)
+- [x] Replaceable LLM backend (`GQB_LLM_CLIENT`, `GQB_MODEL_MAP`, file queue): docs/ADAPTERS.md
+- [x] Final-run configs and cost projection (~$45 at list prices): docs/FINAL_RUN.md
+- [ ] Vera-Life-style lifecycle handling (stale/superseded facts). Blocked: needs pairs of document
+      revisions with known changed values. The corpus has one revision per part. Candidate source:
+      vendor datasheet revision histories (old revisions are often still public)
 
 ## Phase 3: external sets
 - [x] TAT-QA adapter (`external/tatqa.py`, `configs/tatqa.yaml`): 150 numeric items, unit-free scoring
@@ -52,7 +59,8 @@
       paper's prompt-baseline profile (RESULTS.md)
 - [x] FACTS Grounding track (`external/facts.py`, `bench facts`): long-form answers, FACTS
       response-level judge, verify→revise repair
-- [ ] LLM-AggreFact: blocked on HF gated access (needs a personal token that accepted the terms)
+- [ ] LLM-AggreFact: licence permits eval use; blocked only on HF gated access (accept the terms on
+      Hugging Face, then set `HF_TOKEN`)
 - [ ] HOVER: needs a Wikipedia dump plus retrieval; FinQA: redundant with TAT-QA
 - [ ] GAVEL fidelity: no public reference numbers on a shared dataset yet; compare once the
       GAVEL repo releases eval data

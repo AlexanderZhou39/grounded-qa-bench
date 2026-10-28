@@ -9,17 +9,18 @@ from gqb.stages.common import StageContext
 from gqb.stages.cull import EvidentAlignStage, GavelContractStage, LLMFilterStage
 from gqb.stages.generate import CiteStage, GavelDebateStage, PlainStage
 from gqb.stages.repair import AbstainStage, DropUnsupportedStage, RegenerateStage
-from gqb.stages.retrieve import BM25Stage
+from gqb.stages.retrieve import BM25Stage, DenseStage, HybridStage
 from gqb.stages.verify import (
     CascadeStage,
     ClaimDecomposeStage,
     GavelScrutinizeStage,
     LLMJudgeStage,
+    NLISmallStage,
     SpanCheckStage,
 )
 
 REGISTRY: dict[str, dict[str, type[BaseStage]]] = {
-    "retrieve": {"bm25": BM25Stage},
+    "retrieve": {"bm25": BM25Stage, "dense": DenseStage, "hybrid": HybridStage},
     "cull": {
         "llm_filter": LLMFilterStage,
         "evident_align": EvidentAlignStage,
@@ -31,6 +32,7 @@ REGISTRY: dict[str, dict[str, type[BaseStage]]] = {
         "gavel_scrutinize": GavelScrutinizeStage,
         "llm_judge": LLMJudgeStage,
         "claim_decompose": ClaimDecomposeStage,
+        "nli_small": NLISmallStage,
         "cascade": CascadeStage,
     },
     "repair": {

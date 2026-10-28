@@ -100,6 +100,8 @@ def run_combo(
         futures = [ex.submit(one, it, r) for it, r in todo]
         for n, fut in enumerate(as_completed(futures), 1):
             rec = fut.result()
+            if any(t.error and "PendingAnswer" in t.error for t in rec.state.trace):
+                continue  # out-of-band answer not written yet; rerun after answering
             with lock:
                 f.write(rec.model_dump_json() + "\n")
                 f.flush()

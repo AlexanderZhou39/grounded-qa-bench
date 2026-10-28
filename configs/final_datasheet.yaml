@@ -1,0 +1,27 @@
+# Final benchmark run on the held-out test split (443 items), corpus scope with the best
+# measured retriever (hybrid BM25+dense with an MPN entity filter; CPU-only, extra `local`).
+# Projected cost at public list prices: ~$12 (see docs/FINAL_RUN.md). Cheap combos use
+# 2 repeats (consistency metric); Sonnet/Opus rows 1 repeat via the `final_datasheet_big` config.
+run:
+  name: final_datasheet
+  items: data/items/test.jsonl
+  repeats: 2
+  concurrency: 8
+  top_k: 8
+  scope: corpus
+  default_model: claude-haiku-5-5
+  effort: low
+combos:
+  - {retrieve: hybrid, generate: plain, params: {retrieve: {mpn_filter: true}}}
+  - {retrieve: hybrid, generate: cite, params: {retrieve: {mpn_filter: true}}}
+  - {retrieve: hybrid, generate: cite, verify: span_check, repair: abstain, params: {retrieve: {mpn_filter: true}}}
+  - {retrieve: hybrid, generate: cite, verify: gavel_scrutinize, repair: abstain, params: {retrieve: {mpn_filter: true}, verify: {align: loose}}}
+  - {retrieve: hybrid, generate: cite, verify: llm_judge, repair: abstain, params: {retrieve: {mpn_filter: true}}}
+  - {retrieve: hybrid, generate: cite, verify: claim_decompose, repair: abstain, params: {retrieve: {mpn_filter: true}}}
+  - {retrieve: hybrid, cull: gavel_contract, generate: cite, params: {retrieve: {mpn_filter: true}}}
+  - {retrieve: hybrid, cull: gavel_contract, generate: gavel_debate, verify: gavel_scrutinize, repair: abstain, params: {retrieve: {mpn_filter: true}}}
+  - retrieve: hybrid
+    generate: cite
+    verify: cascade
+    repair: abstain
+    params: {retrieve: {mpn_filter: true}, verify: {cheap: gavel_scrutinize, align: loose, escalate_below: 0.9, expensive_model: claude-sonnet-5-5}}

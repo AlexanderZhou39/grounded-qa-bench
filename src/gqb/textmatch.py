@@ -112,7 +112,7 @@ def contains_phrase(phrase: str, haystack: str) -> bool:
 _TOKEN = re.compile(r"[a-z0-9]+(?:\.[0-9]+)?")
 
 
-def find_tokens(quote: str, haystack: str, slack: float = 3.0) -> bool:
+def find_tokens(quote: str, haystack: str, slack: float = 3.0, min_width: int = 0) -> bool:
     """Order-free alignment: every token of ``quote`` occurs within one window of the haystack
     of at most ``slack`` x the quote's token count. Tolerates table rows that PDF extraction
     split across lines or columns, but still rejects quotes with values that are not there."""
@@ -121,8 +121,8 @@ def find_tokens(quote: str, haystack: str, slack: float = 3.0) -> bool:
         return False
     t = _TOKEN.findall(normalize(haystack))
     need = Counter(q)
-    width = int(len(q) * slack) + 2
-    for start in range(max(1, len(t) - width + 1)):
+    width = max(int(len(q) * slack) + 2, min_width)
+    for start in range(len(t)):
         if t[start] not in need:
             continue
         window = Counter(t[start : start + width])

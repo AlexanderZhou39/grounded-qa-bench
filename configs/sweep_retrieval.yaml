@@ -1,0 +1,19 @@
+# Retrieval at corpus scope (all 29 docs): BM25 vs dense (bge-small, CPU) vs hybrid (RRF),
+# each with and without an MPN entity filter. Generator fixed: Haiku cite.
+# Needs the local extra: uv sync --extra local
+run:
+  name: sweep_retrieval
+  items: data/items/dev.jsonl
+  repeats: 1
+  concurrency: 8
+  top_k: 8
+  scope: corpus
+  default_model: claude-haiku-5-5
+  effort: low
+combos:
+  - {retrieve: bm25, generate: cite}
+  - {retrieve: dense, generate: cite}
+  - {retrieve: hybrid, generate: cite}
+  - {retrieve: bm25, generate: cite, params: {retrieve: {mpn_filter: true}}}
+  - {retrieve: hybrid, generate: cite, params: {retrieve: {mpn_filter: true}}}
+  - {retrieve: hybrid, generate: cite, params: {retrieve: {mpn_filter: true, top_k: 16}}}

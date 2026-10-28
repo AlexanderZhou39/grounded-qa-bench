@@ -23,11 +23,17 @@ See [docs/DESIGN.md](docs/DESIGN.md), [docs/METHODS.md](docs/METHODS.md),
 | Phase | Scope | State |
 |---|---|---|
 | 0 | Contracts (`schemas.py`, `stage.py`, `llm.py`), docs | done |
-| 1 | Datasheet QA set: 29 public datasheets, 503 cross-checked items (dev 108 / test 395) | done, human audit pending |
-| 2 | LLM adapters, BM25, 15 stage impls, runner, scorer, HTML report; item- and corpus-scope sweeps | core done (see ROADMAP) |
+| 1 | Datasheet QA set: 29 public datasheets, 560 cross-checked items (dev 117 / test 443) | done |
+| 2 | Pluggable LLM backend, BM25/dense/hybrid retrieval, 16 stage impls, runner, scorer, HTML report | done (see ROADMAP) |
 | 3 | External sets: TAT-QA (QA), RAGTruth (verifier track), FACTS Grounding (long-form) | done; LLM-AggreFact gated, HOVER deferred |
 
-First results: [docs/RESULTS.md](docs/RESULTS.md). Headline: Haiku+BM25+cite ($0.00066/item, 0.93) is on the Pareto front; verifiers catch few errors on short answers, but verify→revise lifts long-form grounding (FACTS 0.85→0.975). Item counts: [data/items/STATS.md](data/items/STATS.md).
+Results: [docs/RESULTS.md](docs/RESULTS.md). Headlines:
+- Haiku + hybrid retrieval + part-number filter + cite reaches 0.935 at corpus scope for $0.00084/item.
+- On "near-miss" unanswerables, full GAVEL lifts Haiku from 0.47 to 0.89, close to Opus (0.93), at 1/16 of the cost.
+- Post-hoc verifiers catch few errors on short answers. Verify→revise lifts long-form grounding (FACTS 0.85→0.975).
+
+Final run: [docs/FINAL_RUN.md](docs/FINAL_RUN.md) (~$45 at list prices, CPU-only). LLM backends: [docs/ADAPTERS.md](docs/ADAPTERS.md).
+Item counts: [data/items/STATS.md](data/items/STATS.md).
 
 ## Quickstart
 
@@ -49,3 +55,20 @@ uv run bench report runs/smoke      # -> runs/smoke/report.html, scores.csv
 - **Benchmark items** (`data/items/*.jsonl`) contain only facts stated in those public datasheets, plus page
   references.
 - **Page text** (`data/corpus/`) is generated locally from the PDFs and gitignored.
+
+## Licences
+
+Answer-pipeline components are all permissively licensed. The benchmark uses them as the components
+that would ship in production:
+
+| Component | Licence |
+|---|---|
+| rank-bm25 | Apache-2.0 |
+| BAAI/bge-small-en-v1.5 (dense retrieval) | MIT |
+| cross-encoder/nli-deberta-v3-base (`nli_small`) | Apache-2.0 |
+| sentence-transformers, PyTorch | Apache-2.0, BSD-3 |
+| pypdfium2 (PDF text) | Apache-2.0 / BSD-3 |
+| rapidfuzz, pydantic, numpy, pillow | MIT, MIT, BSD-3, MIT-CMU |
+
+Evaluation data is downloaded at runtime and never committed. TAT-QA: CC BY 4.0. RAGTruth: MIT.
+FACTS Grounding public set: CC BY 4.0. LLM-AggreFact: CC BY-ND 4.0, gated. HOVER: CC BY-SA 4.0.

@@ -39,6 +39,7 @@ class VResult(BaseModel):
     verifier: str
     hallucinated: bool
     flagged: bool | None  # None = verifier error
+    score: float | None = None  # min verdict confidence (support score), for threshold sweeps
     cost_usd: float
     latency_ms: float
 
@@ -93,6 +94,9 @@ def run_verifier(
             verifier=label,
             hallucinated=p.hallucinated,
             flagged=flagged,
+            score=min(
+                (v.confidence for v in st.verdicts if v.confidence is not None), default=None
+            ),
             cost_usd=sum(t.cost_usd for t in tr),
             latency_ms=sum(t.latency_ms for t in tr),
         )
@@ -133,3 +137,21 @@ def metrics(results: list[VResult]) -> dict[str, dict[str, float]]:
 
 def load_pairs(path: Path) -> list[VPair]:
     return [VPair.model_validate(r) for r in read_jsonl(path)]
+
+
+def calibrate(results: list[VResult], seed: int = 0) -> dict[str, float]:
+    """For score-producing verifiers: pick the support-score threshold that maximizes balanced
+    accuracy on a random half, report BAcc/F1 on the other half (flag if score < threshold)."""
+    import random
+
+    rs = [r for r in results if r.score is not None]
+    random.Random(seed).shuffle(rs)
+    cal, test = rs[: len(rs) // 2], rs[len(rs) // 2 :]
+
+    def flagged_at(t: float, xs: list[VResult]) -> list[VResult]:
+        return [r.model_copy(update={"flagged": r.score < t}) for r in xs]  # type: ignore[operator]
+
+    grid = sorted({r.score for r in cal})  # type: ignore[misc]
+    best = max(grid, key=lambda t: metrics(flagged_at(t, cal))["all"]["bacc"])
+    m = metrics(flagged_at(best, test))["all"]
+    return {"threshold": best, "test_bacc": m["bacc"], "test_f1": m["f1"], "n_test": len(test)}

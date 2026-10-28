@@ -8,12 +8,13 @@ dependencies = [
     "pydantic>=2.7",
     "typer>=0.12",
     "pyyaml>=6.0",
-    "pymupdf>=1.24",
     "rank-bm25>=0.2.2",
     "numpy>=1.26",
     "anthropic>=0.40",
     "openai>=1.50",
     "rapidfuzz>=3.14.6",
+    "pypdfium2>=5.14.0",
+    "pillow>=13.0.0",
 ]
 
 [dependency-groups]
@@ -21,6 +22,11 @@ dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
 bench = "gqb.cli:app"
+
+[project.optional-dependencies]
+local = [
+    "sentence-transformers>=6.2.0",
+]
 
 [build-system]
 requires = ["hatchling"]
