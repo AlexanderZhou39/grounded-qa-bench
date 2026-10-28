@@ -23,9 +23,11 @@
       (94 cross-check-confirmed items; Haiku cite 0.47, full GAVEL 0.89). Reported as bucket `5:near_miss_typ`.
 - [x] Second near-miss kind, `near_miss_cond`: parameter stated only at TA = 25 °C, asked at 85 °C
       (`make-items --near-miss-cond-per-doc 10`; 23 generated, 21 cross-check-confirmed: test 19, dev 2)
-- [ ] Near-miss kind "wrong variant or package": needs per-variant facts (ordering tables), not extracted yet
-- [ ] More text/enum items (package type, interface, pin function). Numeric only for now: the fact
-      extraction schema is numeric, so this needs a second extraction pass over the 29 docs
+- [x] Near-miss kind `near_miss_pkg` (θJA asked for a package the part is not offered in): 14 generated,
+      12 confirmed. Too easy (all combos 1.0); kept as a regression check. Wrong-variant is still open
+- [x] Text/enum items, first kind: `package` (which package is X offered in; 20 items, all cross-check
+      agree) from a package extraction pass (`gqb.dataset.packages`, `make-items --packages`)
+- [ ] More text items: interface, pin function
 
 ## Phase 2: harness and combos
 - [x] LLM adapters: `AnthropicClient`, `OpenAICompatClient`, `RoutingClient` (by model prefix),

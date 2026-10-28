@@ -11,8 +11,8 @@ is cached afterwards.
 
 | Step | Command | Items | Projected $ |
 |---|---|---|---|
-| Datasheet QA, Haiku combos, 2 repeats | `bench run configs/final_datasheet.yaml` | 462 test (443 before near_miss_cond) | 11.3 (measured ×2) |
-| Datasheet QA, Sonnet/Opus reference rows, 1 repeat | `bench run configs/final_datasheet_big.yaml` | 462 test (443 before near_miss_cond) | 26.8 (measured) |
+| Datasheet QA, Haiku combos, 2 repeats | `bench run configs/final_datasheet.yaml` | 493 test (443 in the measured runs) | 11.3 (measured ×2) |
+| Datasheet QA, Sonnet/Opus reference rows, 1 repeat | `bench run configs/final_datasheet_big.yaml` | 493 test (443 in the measured runs) | 26.8 (measured) |
 | Lifecycle (test), 8 combos | `bench fetch-external lifecycle --split test` + `configs/lifecycle.yaml` (items → test) | 417 | 3 |
 | HOVER verifier track | `bench vtrack --pairs data/external/hover/pairs.jsonl` | 150 pairs | 2 |
 | TAT-QA | `bench run configs/tatqa.yaml` | 150 | 2 |

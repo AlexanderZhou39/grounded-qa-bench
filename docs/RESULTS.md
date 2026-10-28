@@ -535,3 +535,52 @@ Measured cost of `final_datasheet_big.yaml`: $26.8.
   followed by revise
 - lifecycle: revision metadata on every evidence unit
 - Keep layout-preserving text for tables (see the pdfium caveat above).
+
+## Package items: text/enum questions and a third near-miss kind
+
+A second extraction pass (Haiku, text only, one call per doc over the ordering/package pages,
+$0.014) lists the packages each part is offered in, with verbatim quotes. 68 packages across 26 docs.
+It feeds two item kinds:
+- `package` (T1 enum): "Which of these packages is the X offered in: A, B or C?" The distractors
+  are other parts' packages. Umbrella families (SON, BGA, QFN …) and family-key overlaps are excluded.
+- `near_miss_pkg` (T5): θJA asked for a package the part is not offered in.
+
+Opus cross-check: 20/20 package items agree, 12/14 near-miss confirmed (the 2 suspects were Opus
+answering despite the wrong package, i.e. it took the trap; discarded per policy). Test now has
+493 items.
+
+| Combo (test) | all (493) | package (20) | near-miss pkg (11) | near-miss cond (19) | near-miss typ (79) |
+|---|---|---|---|---|---|
+| Opus cite | **0.920** | 1.00 | 1.00 | 1.00 | 0.91 |
+| Sonnet cite | 0.898 | 0.95 | 1.00 | 0.95 | 0.89 |
+| Haiku gavel_contract → cite | 0.876 | 0.95 | 1.00 | 1.00 | 0.76 |
+| Haiku full GAVEL | 0.876 | 0.95 | 1.00 | 1.00 | 0.80 |
+| Haiku cite + column_check | 0.876 | 0.75 | 1.00 | 0.84 | 0.77 |
+| Haiku cite | 0.833 | 0.75 | 1.00 | 0.84 | 0.51 |
+| Haiku cite + claim_decompose | 0.815 | **0.40** | 1.00 | 0.84 | 0.72 |
+
+- `near_miss_pkg` is too easy (every combo 1.0). Asking about a package the part does not come in
+  is an obvious mismatch, unlike a limit-vs-typical one. Keep it as a regression check only.
+- On package questions Haiku cite misses 5/20. The GAVEL contract fixes most of them, because it
+  forces the model to find the quote that names the package. claim_decompose wrongly rejects
+  multiple-choice answers ("X is offered in A" with B and C mentioned as non-options).
+- With the full test set, the GAVEL contract and full GAVEL tie with `column_check` at 0.876.
+
+## How general are the fixes? (read before porting)
+
+The fixes are **generic** when they hold for any document QA. They are **domain rules** when they
+encode datasheet conventions, which a BI platform would need to replace with its own:
+
+| Change | Kind | Note |
+|---|---|---|
+| Loose quote alignment (order-free token window) | generic | Any PDF/table extraction reorders cells |
+| Scrutiny grounds only the answer value in the quote; unit scaling; thousands separators | generic | Number formats, not datasheet content |
+| Decompose skips commentary about sources | generic | |
+| `per_entity` retrieval | generic | Needs an entity recognizer. Here: manifest part numbers; in BI: table/entity names |
+| GAVEL judge keeps source caveats | generic | |
+| `warn_stale` + `lifecycle` scope | generic mechanism | Needs revision metadata per document |
+| `_with_meta` (carry a doc's bracketed header line into extracted evidence) | **fitted** | Matches the synthetic lifecycle header format (`[... revision ...]`). A real system should attach version metadata as structured fields, not by regex |
+| `column_check` | **domain rule** | "Typical asked, limit given" is a datasheet convention. It was written after looking at dev items; held-out test confirms the gain (0.51 → 0.77 near-miss), but it does not transfer. The general lesson does: cheap deterministic checks for known domain failure modes beat LLM verifiers. In BI the analogue is checks like "asked for a total, answered with a single row" or "asked for Q3, cited Q2" |
+
+Headline comparisons that exclude the domain rule and the fitted header: on held-out test, Opus
+cite 0.920, Sonnet 0.898, Haiku + GAVEL contract 0.876, Haiku cite 0.833.

@@ -406,6 +406,68 @@ class Generator:
             )
         return out
 
+    def package_items(self, rows: list[dict]) -> list[BenchItem]:
+        """Enum ``package`` items (tier 1) and ``near_miss_pkg`` items (tier 5) from the package
+        pass (``gqb.dataset.packages``)."""
+        from gqb.dataset import packages as pk
+
+        by_doc: dict[str, list[dict]] = defaultdict(list)
+        for r in rows:
+            by_doc[r["doc_id"]].append(r)
+        pool = sorted({r["name"] for r in rows if pk._PLAIN.match(r["name"]) and r["pins"]})
+        out = []
+        for doc_id in sorted(by_doc):
+            if doc_id not in self.manifest:
+                continue
+            mpn = self.manifest[doc_id].mpn
+            own = [r["name"] for r in by_doc[doc_id]]
+            rng = random.Random(f"pkg:{doc_id}")
+            others = pk.foreign(own, pool)
+            gold = [r for r in by_doc[doc_id] if pk._PLAIN.match(r["name"])]
+            if gold and len(others) >= 2:
+                g = rng.choice(gold)
+                opts = [g["name"], *rng.sample(others, 2)]
+                rng.shuffle(opts)
+                out.append(
+                    BenchItem(
+                        id=self._id(doc_id, Tier.DIRECT),
+                        tier=Tier.DIRECT,
+                        question=f"Which of these packages is the {mpn} offered in: "
+                        f"{opts[0]}, {opts[1]} or {opts[2]}?",
+                        answer_type=AnswerType.ENUM,
+                        gold_answer=g["name"],
+                        doc_ids=[doc_id],
+                        gold_evidence=[
+                            GoldEvidence(doc_id=doc_id, page=g["page"], quote=g["quote"])
+                        ],
+                        meta={"kind": "package", "options": opts, "mpn": mpn, "offered": own},
+                    )
+                )
+            thetas = pk.theta_ja(self.facts, doc_id)
+            if thetas and others:
+                f = thetas[0]
+                pkg = rng.choice(others)
+                out.append(
+                    BenchItem(
+                        id=self._id(doc_id, Tier.UNANSWERABLE),
+                        tier=Tier.UNANSWERABLE,
+                        question=f"What is the junction-to-ambient thermal resistance of the "
+                        f"{mpn} in the {pkg} package?",
+                        answer_type=AnswerType.UNANSWERABLE,
+                        gold_answer=None,
+                        doc_ids=[doc_id],
+                        gold_evidence=[_ev(f)],
+                        meta={
+                            "kind": "near_miss_pkg",
+                            "fact_ids": [f.id],
+                            "asked_package": pkg,
+                            "offered": own,
+                            "mpn": mpn,
+                        },
+                    )
+                )
+        return out
+
     # -- tier 6 -------------------------------------------------------------
 
     def distractor(self, t1_items: list[BenchItem], k_per_doc: int) -> list[BenchItem]:
@@ -531,6 +593,7 @@ class Generator:
         per_family_cross: int = 6,
         near_miss_per_doc: int = 2,
         near_miss_cond_per_doc: int = 0,
+        packages: list[dict] | None = None,
     ) -> list[BenchItem]:
         per_doc = per_doc or {
             Tier.DIRECT: 8,
@@ -566,6 +629,8 @@ class Generator:
             items += self.near_miss(doc_id, near_miss_per_doc, skip=2)
         for doc_id in sorted(self.by_doc):
             items += self.near_miss_cond(doc_id, near_miss_cond_per_doc)
+        if packages:
+            items += self.package_items(packages)
         return items
 
 

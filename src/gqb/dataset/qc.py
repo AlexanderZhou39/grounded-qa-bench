@@ -134,7 +134,9 @@ def crosscheck(
                 model,
                 system=CHECK_SYSTEM.replace(
                     "Report value and unit separately (value as a plain number).",
-                    "Answer with one part number.",
+                    "Answer with one of the options named in the question."
+                    if item.meta.get("kind") == "package"
+                    else "Answer with one part number.",
                 ),
                 response_model=CheckChoice,
                 max_tokens=4096,

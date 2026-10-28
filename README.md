@@ -31,8 +31,9 @@ Results: [docs/RESULTS.md](docs/RESULTS.md). Headlines:
 - Haiku + hybrid retrieval + part-number filter + cite reaches 0.935 at corpus scope for $0.00084/item.
 - On "near-miss" unanswerables, full GAVEL lifts Haiku from 0.47 to 0.89, close to Opus (0.93), at 1/16 of the cost.
 - Post-hoc verifiers catch few errors on short answers. Verify→revise lifts long-form grounding (FACTS 0.85→0.975).
-- Held-out test (443 items): Opus cite 0.911, Sonnet 0.891. Haiku cite plus the deterministic `column_check`
-  verifier reaches 0.878 at 1/38 of Opus's cost.
+- Held-out test (493 items): Opus cite 0.920, Sonnet 0.898, Haiku + GAVEL evidence contract 0.876, Haiku cite
+  0.833. A datasheet-specific deterministic rule (`column_check`) also reaches 0.876 at Haiku cost. It is a
+  domain rule, not a general method (docs/RESULTS.md, "How general are the fixes?").
 - A single Haiku judge call beats decompose-then-verify (RAGTruth, HOVER) at a fraction of the cost.
 - Superseded document revisions are handled in context once revision metadata is visible. Pipelines that re-extract evidence must carry that metadata, or they answer from stale sources without warning.
 

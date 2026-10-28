@@ -117,6 +117,7 @@ def make_items(
     seed: int = 13,
     near_miss_per_doc: int = 2,
     near_miss_cond_per_doc: int = 0,
+    packages: bool = typer.Option(False, help="Add package items from data/local/packages.jsonl"),
     corpus_dir: Path = typer.Option(None, help="Corpus the facts were extracted from"),
 ) -> None:
     """Deterministically generate tiered items from facts -> data/local/items_raw.jsonl."""
@@ -127,7 +128,9 @@ def make_items(
     corpus = Corpus(corpus_dir) if corpus_dir else Corpus()
     facts = [Fact.model_validate(r) for r in _read_jsonl(LOCAL / "facts.jsonl")]
     items = Generator(facts, corpus, corpus.manifest, seed=seed).generate(
-        near_miss_per_doc=near_miss_per_doc, near_miss_cond_per_doc=near_miss_cond_per_doc
+        near_miss_per_doc=near_miss_per_doc,
+        near_miss_cond_per_doc=near_miss_cond_per_doc,
+        packages=_read_jsonl(LOCAL / "packages.jsonl") if packages else None,
     )
     write_jsonl(LOCAL / "items_raw.jsonl", items)
     typer.echo(dict(collections.Counter(f"T{int(i.tier)}" for i in items)))
