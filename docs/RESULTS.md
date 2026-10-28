@@ -411,3 +411,127 @@ T5 122 of which near-miss 79, T6 29.)
   - verify: a single LLM-judge call only for long-form output, followed by revise; for single values,
     no verifier
   - lifecycle: version metadata on every evidence unit, with deterministic supersession filtering
+
+# Remaining plan items (second pass)
+
+## `column_check`: deterministic min/typ/max check (no LLM)
+
+`span_check`, plus one rule. When the question asks for a typical value, the claim is unsupported if
+the answer, or the evidence line holding the value, labels that value as a limit (max, min,
+"no higher than", ≤ …). Limit words that are part of the asked parameter's name are ignored.
+Generations come from cache, so the verifier itself costs $0.
+
+| | all | near-miss typ | T1 | T3 | false flags |
+|---|---|---|---|---|---|
+| dev (bm25, item scope, 3 repeats): cite | 0.903 | 0.466 | 0.959 | 1.0 | – |
+| dev: cite + column_check → abstain | **0.962** | **0.955** | 0.951 | 1.0 | 0.019 |
+| test (hybrid+MPN, corpus scope, 443 items): cite | 0.833 | 0.506 | 0.897 | 0.890 | – |
+| test: cite + column_check → abstain | **0.880** | **0.772** | 0.890 | 0.877 | – |
+
+- The rule was written after looking at dev. On held-out test it recovers 27 of the 49 points that
+  cite loses on near-miss, at no cost, and drops T1/T3 by one item each.
+- On test it beats every LLM verifier and the full GAVEL pipeline overall (0.880 vs 0.844), but not
+  on near-miss (0.77 vs 0.80).
+- This is the "GAVEL rule-based scrutiny" idea narrowed to the datasheet failure that matters.
+
+## One sub-query per entity for T4 (cross-doc comparisons)
+
+`retrieve.per_entity`: when the question names more than one part, retrieve `top_k / n` passages
+from each part's document separately. All 16 T4 items (dev + test), 3 repeats, Haiku cite:
+
+| | acc | cite recall | consistency |
+|---|---|---|---|
+| hybrid + MPN | 0.708 | 0.905 | 0.625 |
+| hybrid + MPN + per_entity | **0.854** | 0.933 | 0.437 |
+
+n = 16 items, so the CI is wide (±~0.17). Consistency drops because the extra evidence makes some
+comparisons flip between repeats.
+
+## FACTS: second judge (Sonnet) next to Opus
+
+Same 40 examples, same FACTS response-level prompt.
+
+| generator | Opus judge | Sonnet judge | agreement | both (AND, FACTS-style) |
+|---|---|---|---|---|
+| Haiku | 0.850 | 0.925 | 0.925 | 0.850 |
+| Haiku + verify→revise | 0.950 | 1.000 | 0.950 | 0.950 |
+
+- Sonnet is more lenient. It never fails a response that Opus passes.
+- The verify→revise gain holds under both judges (+10 and +7.5 points).
+- The Sonnet judge costs $0.010 per example, against $0.024 for Opus. A third judge from another
+  model family is still open. FACTS itself uses Gemini, GPT and Claude judges.
+- The Opus-judged repair number moved from 0.975 to 0.950 after the decompose prompt change in the
+  fairness pass. That is one example in 40.
+
+## HOVER with open retrieval
+
+Same 150 claims. The context is now the top-8 BM25 articles (SQLite FTS5, title weight 3) over all
+5.2M intro paragraphs, instead of the gold articles. Gold-article recall: 2-hop 0.75, 3-hop 0.54,
+4-hop 0.41. All gold articles were retrieved for 35 of the 150 claims.
+
+| verifier | oracle BAcc | open BAcc | open, full recall (n=35) | open, partial recall (n=115) |
+|---|---|---|---|---|
+| llm_judge Haiku | 0.78 | 0.60 | 0.69 | 0.55 |
+| llm_judge Sonnet | 0.79 | 0.59 | 0.71 | 0.53 |
+| claim_decompose Haiku | 0.73 | 0.58 | 0.71 | 0.53 |
+| claim_decompose Sonnet | 0.71 | 0.59 | 0.68 | 0.54 |
+
+- With missing evidence, every verifier flags nearly every claim, including supported ones (TNR
+  ≤ 0.11). That is the correct conservative behaviour for a grounding check, so the loss is
+  retrieval, not verification.
+- Multi-hop retrieval (iterative or query-decomposed, as in Baleen or HoVer's own pipeline) is the
+  missing stage. A BI platform with multi-table joins has the same shape.
+
+## Caveat found: pdfium text loses table columns
+
+While adding items, the Opus cross-check was re-run on the pdfium corpus (`data/corpus`) instead
+of the pymupdf text the items were checked on. 22 of 595 verdicts changed (15 near-miss-typ). 15 kept items would have
+become disputed, 11 of them near-miss-typ. Opus said "the extracted text does not show which column (MIN, TYP or MAX)
+the value falls in". pdfium joins table cells with single spaces, while pymupdf keeps the column
+spacing. The original (pymupdf) verdicts were restored. The pdfium verdicts are kept as
+`meta.crosscheck_pdfium`.
+
+Consequence for the final run, which uses pdfium text:
+- About 12% of near-miss-typ items (11 of 94) cannot be resolved from the text alone, which caps
+  near-miss accuracy for every method.
+- `column_check` and GAVEL still score highest there, because they use limit words, not column
+  positions.
+- For production table QA, use a layout-preserving extractor (or table structure) for evidence
+  text. pdfium's better reading order helps retrieval but hurts column semantics.
+
+## Held-out test: bigger generators, new components, second near-miss kind
+
+Same setup as the held-out table above (hybrid + MPN, corpus scope, 1 repeat). Sonnet/Opus rows cover
+the original 443 items. Haiku rows also include the 19 `near_miss_cond` items (n = 462).
+Measured cost of `final_datasheet_big.yaml`: $26.8.
+
+| Combo | all | T1 | T2 | T3 | T4 | near-miss typ (79) | near-miss cond (19) | T6 | $/item |
+|---|---|---|---|---|---|---|---|---|---|
+| Opus cite | **0.911** | 0.89 | 0.95 | 0.90 | 0.69 | **0.91** | – | 0.97 | 0.0342 |
+| Sonnet cite | 0.891 | 0.88 | 0.92 | 0.88 | 0.69 | 0.89 | – | 0.97 | 0.0170 |
+| **Haiku cite + column_check → abstain** | 0.878 | 0.89 | 0.92 | 0.88 | 0.69 | 0.77 | 0.84 | 0.97 | **0.0009** |
+| full GAVEL, Haiku debaters + Sonnet judge | 0.864 | 0.87 | 0.85 | 0.89 | 0.69 | 0.80 | – | 0.90 | 0.0083 |
+| Haiku gavel_contract → cite | 0.865* | 0.87 | 0.93 | 0.86 | 0.69 | 0.76 | **1.00** | 0.93 | 0.0011 |
+| Haiku cite + per_entity | 0.837 | 0.90 | 0.92 | 0.89 | **0.85** | 0.51 | 0.84 | 0.97 | 0.0009 |
+| Haiku cite | 0.833* | 0.90 | 0.92 | 0.89 | 0.69 | 0.51 | 0.84 | 0.97 | 0.0009 |
+
+\* on the 443 original items.
+
+- **Haiku + `column_check` gets within 1.3 points of Sonnet and 3.3 points of Opus, at 1/19 and
+  1/38 of their cost.** The remaining gap is almost all near-miss-typ.
+- A Sonnet judge over Haiku debaters adds 2 points to full GAVEL (0.844 → 0.864) for 4.7× the cost.
+  This tests the hypothesis noted in the dev results, and it does not beat plain Sonnet cite.
+- `near_miss_cond` (asked at 85 °C, stated at 25 °C) is easier than `near_miss_typ`. Haiku cite
+  already abstains on 84%, and GAVEL's evidence contract on 100%. n = 19, so treat it as a smoke
+  test of the kind, not a ranking.
+- `per_entity` helps only T4 (+15 points, n = 13) and changes nothing else. Turn it on whenever a
+  question names several entities.
+
+**Updated recommendation per stage:**
+- retrieve: hybrid + entity filter; per-entity sub-queries for comparisons
+- cull: none by default; GAVEL contract when abstention on unanswerables matters most
+- generate: cite with a small model
+- verify: deterministic domain rules (`column_check`) first; an LLM judge only for long-form output,
+  followed by revise
+- lifecycle: revision metadata on every evidence unit
+- Keep layout-preserving text for tables (see the pdfium caveat above).

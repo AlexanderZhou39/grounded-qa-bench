@@ -14,6 +14,7 @@ combos:
   - {generate: cite}
   # 2. one verifier at a time (+abstain)
   - {generate: cite, verify: span_check, repair: abstain}
+  - {generate: cite, verify: column_check, repair: abstain}
   - {generate: cite, verify: gavel_scrutinize, repair: abstain}
   - {generate: cite, verify: gavel_scrutinize, repair: abstain, params: {verify: {align: loose}}}
   - {generate: cite, verify: llm_judge, repair: abstain}

@@ -14,7 +14,9 @@ run:
 combos:
   - {retrieve: hybrid, generate: plain, params: {retrieve: {mpn_filter: true}}}
   - {retrieve: hybrid, generate: cite, params: {retrieve: {mpn_filter: true}}}
+  - {retrieve: hybrid, generate: cite, params: {retrieve: {mpn_filter: true, per_entity: true}}}
   - {retrieve: hybrid, generate: cite, verify: span_check, repair: abstain, params: {retrieve: {mpn_filter: true}}}
+  - {retrieve: hybrid, generate: cite, verify: column_check, repair: abstain, params: {retrieve: {mpn_filter: true}}}
   - {retrieve: hybrid, generate: cite, verify: gavel_scrutinize, repair: abstain, params: {retrieve: {mpn_filter: true}, verify: {align: loose}}}
   - {retrieve: hybrid, generate: cite, verify: llm_judge, repair: abstain, params: {retrieve: {mpn_filter: true}}}
   - {retrieve: hybrid, generate: cite, verify: claim_decompose, repair: abstain, params: {retrieve: {mpn_filter: true}}}

@@ -55,7 +55,8 @@ class BM25Stage(BaseStage):
     """Params: ``top_k``; ``mpn_filter`` (corpus scope only: restrict to docs whose part
     number the question names, falling back to the whole corpus); ``lifecycle`` (drop
     superseded revisions using the corpus's ``revisions.json``; records still-stale docs in
-    ``scratch["stale_docs"]`` for the ``warn_stale`` repair)."""
+    ``scratch["stale_docs"]`` for the ``warn_stale`` repair); ``per_entity`` (when the question
+    names several parts, retrieve ``top_k / n`` passages from each part's doc separately)."""
 
     slot = "retrieve"
     name = "bm25"
@@ -72,7 +73,14 @@ class BM25Stage(BaseStage):
             scope, stale = lifecycle_scope(scope, revisions(self.ctx.corpus.root))
             state.scratch["stale_docs"] = stale
         k = int(self.params.get("top_k", self.ctx.top_k))
-        state.candidates = self.retriever().search(state.question, scope, k=k)
+        named = mpn_scope(state.question, self.ctx) if self.params.get("per_entity") else []
+        if len(named) > 1:  # one sub-query per named entity, so each part gets evidence
+            per = max(2, k // len(named))
+            state.candidates = [
+                p for d in named for p in self.retriever().search(state.question, [d], k=per)
+            ]
+        else:
+            state.candidates = self.retriever().search(state.question, scope, k=k)
         return state
 
 

@@ -116,6 +116,7 @@ def extract_facts(
 def make_items(
     seed: int = 13,
     near_miss_per_doc: int = 2,
+    near_miss_cond_per_doc: int = 0,
     corpus_dir: Path = typer.Option(None, help="Corpus the facts were extracted from"),
 ) -> None:
     """Deterministically generate tiered items from facts -> data/local/items_raw.jsonl."""
@@ -126,7 +127,7 @@ def make_items(
     corpus = Corpus(corpus_dir) if corpus_dir else Corpus()
     facts = [Fact.model_validate(r) for r in _read_jsonl(LOCAL / "facts.jsonl")]
     items = Generator(facts, corpus, corpus.manifest, seed=seed).generate(
-        near_miss_per_doc=near_miss_per_doc
+        near_miss_per_doc=near_miss_per_doc, near_miss_cond_per_doc=near_miss_cond_per_doc
     )
     write_jsonl(LOCAL / "items_raw.jsonl", items)
     typer.echo(dict(collections.Counter(f"T{int(i.tier)}" for i in items)))
@@ -410,6 +411,11 @@ def fetch_external(
 
         pairs = hover.build(per_cell=per_cell)
         typer.echo(f"{len(pairs)} pairs -> data/external/hover/pairs.jsonl")
+        op = hover.build_open()
+        rec = sum(p.meta["recall"] for p in op) / len(op)
+        typer.echo(
+            f"{len(op)} open-retrieval pairs (gold-article recall {rec:.2f}) -> pairs_open.jsonl"
+        )
     else:
         raise typer.BadParameter(f"unknown set {name!r}")
 

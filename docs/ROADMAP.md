@@ -21,8 +21,11 @@
 - [x] Tier 4 (cross-doc comparison), 16 items, all cross-check agree. More need more same-family docs.
 - [x] Harder tier 5, first kind: `near_miss_typ` asks for typ when only min/max is stated
       (94 cross-check-confirmed items; Haiku cite 0.47, full GAVEL 0.89). Reported as bucket `5:near_miss_typ`.
-- [ ] More near-miss kinds: wrong condition, wrong variant or package
-- [ ] More text/enum items (package type, interface, pin function). Currently numeric only.
+- [x] Second near-miss kind, `near_miss_cond`: parameter stated only at TA = 25 °C, asked at 85 °C
+      (`make-items --near-miss-cond-per-doc 10`; 23 generated, 21 cross-check-confirmed: test 19, dev 2)
+- [ ] Near-miss kind "wrong variant or package": needs per-variant facts (ordering tables), not extracted yet
+- [ ] More text/enum items (package type, interface, pin function). Numeric only for now: the fact
+      extraction schema is numeric, so this needs a second extraction pass over the 29 docs
 
 ## Phase 2: harness and combos
 - [x] LLM adapters: `AnthropicClient`, `OpenAICompatClient`, `RoutingClient` (by model prefix),
@@ -40,8 +43,8 @@
 - [x] `scope: corpus` runs (`configs/sweep_corpus.yaml`). Retrieval is the bottleneck (RESULTS.md)
 - [x] Retrievers `dense` (bge-small, CPU) / `hybrid` (RRF), `mpn_filter` entity scope. Hybrid+MPN
       recovers the corpus-scope gap (0.833→0.935)
-- [ ] One sub-query per entity for T4
-- [ ] `column_check` verifier (deterministic typ/min/max column check). See RESULTS.md "next"
+- [x] One sub-query per entity for T4 (`retrieve.per_entity`): T4 0.708→0.854 (n=16)
+- [x] `column_check` verifier (deterministic, no LLM): held-out near-miss 0.51→0.77, overall 0.833→0.880
 - [x] `nli_small` verifier (nli-deberta-v3-base, extra `local`). Near chance on RAGTruth (BAcc 0.57
       calibrated). Next: a grounding-trained small checker
 - [x] Verifier track: done on RAGTruth (`bench vtrack`). Harvesting pairs from datasheet runs is
@@ -54,7 +57,8 @@
       `configs/lifecycle.yaml`), `lifecycle` retrieval param (evidence state from `revisions.json`),
       `warn_stale` repair. Only 6 real value changes were found in the corpus's revision histories,
       too few to score
-- [ ] Lifecycle with real revisions (old public datasheet revisions) and unlabelled conflicts
+- [ ] Lifecycle with real revisions: needs the older public PDF revisions downloaded and added to the
+      allowlist; the corpus's revision histories list only 6 value changes
 - [x] Fairness pass: loose alignment by default, number grounding in scrutiny limited to the answer
       value, decompose skips commentary, metadata survives evidence extraction (RESULTS.md)
 
@@ -67,7 +71,10 @@
 - [ ] LLM-AggreFact: licence permits eval use; blocked only on HF gated access (accept the terms on
       Hugging Face, then set `HF_TOKEN`)
 - [x] HOVER verifier track, oracle docs from the authors' 2017 Wikipedia db (`fetch-external hover`)
-- [ ] HOVER open retrieval (BM25 over the 5M-article db); FinQA: redundant with TAT-QA
+- [x] HOVER open retrieval (FTS5 BM25 over 5.2M intros): recall 0.57, verifier BAcc 0.78→0.60
+- [ ] FinQA: skipped as redundant with TAT-QA (same skill: numeric QA over financial tables + text)
 - [ ] GAVEL fidelity: no public reference numbers on a shared dataset yet; compare once the
       GAVEL repo releases eval data
-- [ ] FACTS: add a 2nd/3rd judge from other model families plus the eligibility filter
+- [x] FACTS second judge (Sonnet): 92–95% agreement with Opus, more lenient; repair gain holds
+- [ ] FACTS third judge from another model family (needs a non-Anthropic key via `OpenAICompatClient`)
+      plus the eligibility filter

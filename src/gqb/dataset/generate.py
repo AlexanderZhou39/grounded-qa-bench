@@ -80,6 +80,14 @@ def _usable(f: Fact) -> bool:
     )
 
 
+_TEMP = re.compile(r"\bT[AJC]?\s*=\s*[+–-]?\s*\d+\s*[°º]?\s*C\b", re.I)
+_ROOM = re.compile(r"(\bT[AJC]?\s*=\s*)\+?\s*25\s*([°º]?\s*C)\b", re.I)
+
+
+def _hot(m: re.Match[str]) -> str:
+    return f"{m.group(1)}85{m.group(2)}"
+
+
 def _conds(f: Fact) -> str:
     return "; ".join(c.strip() for c in f.conditions if c.strip())
 
@@ -351,6 +359,53 @@ class Generator:
             )
         return out
 
+    def near_miss_cond(self, doc_id: str, k: int) -> list[BenchItem]:
+        """Harder tier 5, second kind: the doc states a parameter only at room temperature
+        (TA = 25 °C, a single row); the question asks for it at 85 °C. The value exists, so a
+        model that ignores the condition answers with the 25 °C number and is wrong."""
+        entry = self.manifest[doc_id]
+        rows = defaultdict(list)
+        for f in self.by_doc[doc_id]:
+            rows[_pkey(f)].append(f)
+        pool = [
+            fs[0]
+            for _, fs in sorted(rows.items())
+            if len(fs) == 1
+            and fs[0].section in (Section.ELECTRICAL, Section.RECOMMENDED)  # abs-max: derating
+            and sum(bool(_ROOM.search(c)) for c in fs[0].conditions) == 1
+            and not any(_TEMP.search(c) and not _ROOM.search(c) for c in fs[0].conditions)
+        ]
+        random.Random(f"cond:{doc_id}").shuffle(pool)
+        out = []
+        for f in pool[:k]:
+            field = "typ" if f.typ is not None else "max" if f.max is not None else "min"
+            word = {"typ": "typical", "max": "maximum", "min": "minimum"}[field]
+            conds = [_ROOM.sub(_hot, c) for c in f.conditions]
+            q = (
+                f"What is the {word} {_label(f)} of the {entry.mpn}{SECTION_PHRASE[f.section]}, "
+                f"under the condition(s): {'; '.join(c.strip() for c in conds if c.strip())}?"
+            )
+            out.append(
+                BenchItem(
+                    id=self._id(doc_id, Tier.UNANSWERABLE),
+                    tier=Tier.UNANSWERABLE,
+                    question=q,
+                    answer_type=AnswerType.UNANSWERABLE,
+                    gold_answer=None,
+                    doc_ids=[doc_id],
+                    gold_evidence=[_ev(f)],
+                    meta={
+                        "kind": "near_miss_cond",
+                        "fact_ids": [f.id],
+                        "field": field,
+                        "stated_at": _conds(f),
+                        "stated": {x: getattr(f, x) for x in ("min", "typ", "max")},
+                        "mpn": entry.mpn,
+                    },
+                )
+            )
+        return out
+
     # -- tier 6 -------------------------------------------------------------
 
     def distractor(self, t1_items: list[BenchItem], k_per_doc: int) -> list[BenchItem]:
@@ -475,6 +530,7 @@ class Generator:
         per_doc: dict[Tier, int] | None = None,
         per_family_cross: int = 6,
         near_miss_per_doc: int = 2,
+        near_miss_cond_per_doc: int = 0,
     ) -> list[BenchItem]:
         per_doc = per_doc or {
             Tier.DIRECT: 8,
@@ -508,6 +564,8 @@ class Generator:
             items += self.near_miss(doc_id, min(2, near_miss_per_doc))
         for doc_id in sorted(self.by_doc):
             items += self.near_miss(doc_id, near_miss_per_doc, skip=2)
+        for doc_id in sorted(self.by_doc):
+            items += self.near_miss_cond(doc_id, near_miss_cond_per_doc)
         return items
 
 

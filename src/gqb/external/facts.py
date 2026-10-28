@@ -122,7 +122,7 @@ def repair(e: FactsExample, response: str, llm: LLMClient, model: str) -> tuple[
         answer=Answer(text=response, value=response),
     )
     ctx = StageContext(corpus=Corpus(), retriever=None, default_model=model)  # type: ignore[arg-type]
-    st = REGISTRY["verify"]["claim_decompose"](ctx, model).run(st, llm)
+    st = REGISTRY["verify"]["claim_decompose"](ctx, model, max_tokens=12000).run(st, llm)
     cost = sum(t.cost_usd for t in st.trace)
     claims = {c.id: c.text for c in (st.answer.claims if st.answer else [])}
     bad = [
