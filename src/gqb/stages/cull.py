@@ -10,12 +10,14 @@
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, Field
 
 from gqb.llm import Message, StageMeter
 from gqb.schemas import EvidenceUnit, Passage, PipelineState
 from gqb.stages.base import BaseStage
-from gqb.textmatch import find_span
+from gqb.textmatch import align_quote
 
 
 def passages_to_units(passages: list[Passage]) -> list[EvidenceUnit]:
@@ -23,6 +25,17 @@ def passages_to_units(passages: list[Passage]) -> list[EvidenceUnit]:
         EvidenceUnit(id=f"E{i}", passage_id=p.id, doc_id=p.doc_id, page=p.page, text=p.text)
         for i, p in enumerate(passages, 1)
     ]
+
+
+_META = re.compile(r"(?i)\b(revision|version|valid|supersed)")
+
+
+def _with_meta(quote: str, p: Passage) -> str:
+    """Extracted quotes keep the passage's document-metadata line (a leading ``[...]`` line,
+    e.g. a revision header), so provenance survives evidence extraction."""
+    first = p.text.split("\n", 1)[0]
+    meta = first.startswith("[") and _META.search(first) and first not in quote
+    return f"{first}\n{quote}" if meta else quote
 
 
 def _format_passages(passages: list[Passage]) -> str:
@@ -106,7 +119,11 @@ class EvidentAlignStage(BaseStage):
         dropped = 0
         for ex in res.parsed.excerpts if res.parsed else []:
             p = _passage_by_tag(state.candidates, ex.passage)
-            m = find_span(ex.quote, p.text) if p else None
+            m = (
+                align_quote(ex.quote, p.text, self.params.get("align", "loose") == "loose")
+                if p
+                else None
+            )
             if p is None or m is None:
                 dropped += 1
                 continue
@@ -116,7 +133,7 @@ class EvidentAlignStage(BaseStage):
                     passage_id=p.id,
                     doc_id=p.doc_id,
                     page=p.page,
-                    text=ex.quote,
+                    text=_with_meta(ex.quote, p),
                     char_start=m.start,
                     char_end=m.end,
                 )
@@ -162,7 +179,11 @@ class GavelContractStage(BaseStage):
         ledger = []
         for b in res.parsed.bindings if res.parsed else []:
             p = _passage_by_tag(state.candidates, b.passage)
-            m = find_span(b.quote, p.text) if p else None
+            m = (
+                align_quote(b.quote, p.text, self.params.get("align", "loose") == "loose")
+                if p
+                else None
+            )
             ok = p is not None and m is not None
             ledger.append({"subclaim": b.subclaim, "passage": b.passage, "valid": ok})
             if not ok:
@@ -173,7 +194,7 @@ class GavelContractStage(BaseStage):
                     passage_id=p.id,
                     doc_id=p.doc_id,
                     page=p.page,
-                    text=f"{b.quote}\n(establishes: {b.subclaim})",
+                    text=_with_meta(f"{b.quote}\n(establishes: {b.subclaim})", p),
                     char_start=m.start,
                     char_end=m.end,
                 )

@@ -55,14 +55,21 @@ def squash(text: str) -> str:
     return _NON_ALNUM.sub("", normalize(text))
 
 
+_GROUPED = re.compile(r"(?<![\d.,])-?\d{1,3}(?:,\d{3})+(?:\.\d+)?(?![\d,])")
+
+
 def numbers_in(text: str) -> list[float]:
-    """All numeric literals in text (after normalization)."""
+    """All numeric literals in text (after normalization). Thousands-grouped literals
+    ("4,351") are returned both whole and as their comma-separated parts, since a comma can
+    also separate list items."""
     out = []
-    for m in _NUMBER.finditer(normalize(text)):
+    norm = normalize(text)
+    for m in _NUMBER.finditer(norm):
         try:
             out.append(float(m.group()))
         except ValueError:
             continue
+    out += [float(m.group().replace(",", "")) for m in _GROUPED.finditer(norm)]
     return out
 
 
@@ -129,3 +136,12 @@ def find_tokens(quote: str, haystack: str, slack: float = 3.0, min_width: int = 
         if all(window[k] >= v for k, v in need.items()):
             return True
     return False
+
+
+def align_quote(quote: str, haystack: str, loose: bool = True) -> SpanMatch | None:
+    """``find_span``, falling back (when ``loose``) to the order-free token window, so table
+    rows that PDF extraction reordered still count. Values must still be present."""
+    m = find_span(quote, haystack)
+    if m is None and loose and find_tokens(quote, haystack):
+        m = SpanMatch("tokens", 80.0)
+    return m

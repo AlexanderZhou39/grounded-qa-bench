@@ -1,24 +1,29 @@
 # Final run: configuration, sample sizes, cost
 
-Projected cost at public list prices (USD per 1M tokens in/out: Haiku 0.10/0.50, Sonnet 2/10,
-Opus 4/20) is **about $45**. The projection uses per-item costs measured in the dev sweeps,
-scaled by 1.27 for corpus scope (the measured ratio for hybrid+MPN against item scope). Everything
-runs CPU-only. Local models are bge-small (embeddings, ~130 MB) and nli-deberta-v3-base (~740 MB).
-They need the extra: `uv sync --extra local`.
+Cost at public list prices (USD per 1M tokens in/out: Haiku 0.10/0.50, Sonnet 2/10, Opus 4/20)
+is **about $50**. The Haiku-config row is **measured**: a 1-repeat run of `final_datasheet.yaml` on
+all 443 test items cost $5.67 and took 16 minutes. Other rows use per-item costs measured in the
+dev sweeps, scaled by 1.36: the measured ratio of test-split corpus-scope cost ($0.00090/item,
+Haiku cite) to dev item-scope cost ($0.00066). Everything runs CPU-only. Local models are bge-small
+(embeddings, ~130 MB) and nli-deberta-v3-base (~740 MB). They need the extra: `uv sync --extra local`.
+A cold embedding of the 2431-page corpus (3707 chunks) took 151 s on a 32-thread desktop CPU. It
+is cached afterwards.
 
 | Step | Command | Items | Projected $ |
 |---|---|---|---|
-| Datasheet QA, Haiku combos, 2 repeats | `bench run configs/final_datasheet.yaml` | 443 test | 12 |
-| Datasheet QA, Sonnet/Opus reference rows, 1 repeat | `bench run configs/final_datasheet_big.yaml` | 443 test | 24 |
+| Datasheet QA, Haiku combos, 2 repeats | `bench run configs/final_datasheet.yaml` | 443 test | 11.3 (measured ×2) |
+| Datasheet QA, Sonnet/Opus reference rows, 1 repeat | `bench run configs/final_datasheet_big.yaml` | 443 test | 26 |
+| Lifecycle (test), 8 combos | `bench fetch-external lifecycle --split test` + `configs/lifecycle.yaml` (items → test) | 417 | 3 |
+| HOVER verifier track | `bench vtrack --pairs data/external/hover/pairs.jsonl` | 150 pairs | 2 |
 | TAT-QA | `bench run configs/tatqa.yaml` | 150 | 2 |
 | RAGTruth verifier track (llm_judge, claim_decompose × Haiku/Sonnet; nli_small free) | `bench vtrack ...` | 150 pairs | 1 |
 | FACTS Grounding, 3 generators, Opus judge | `bench facts --generator ... --n 60` | 60 | 5 |
-| **Total** | | | **~45** |
+| **Total** | | | **~50** |
 
 Ways to cut cost:
-- Run the FACTS judge through the file queue with a coding agent (`docs/ADAPTERS.md`). That removes
-  about 70% of the FACTS cost.
-- Drop the Opus generator row. It is about $14 and, on dev, adds only about 2 points over Sonnet.
+- Run the FACTS judge through the file queue with a coding agent (`docs/ADAPTERS.md`). The Opus judge
+  is 84% of measured FACTS cost ($0.024 per example, against $0.0006–0.010 for the generators).
+- Drop the Opus generator row. It is about $15 and, on dev, adds only about 2 points over Sonnet.
 - Add `--limit` to the big config. It is tier-balanced.
 
 ```bash

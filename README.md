@@ -25,15 +25,17 @@ See [docs/DESIGN.md](docs/DESIGN.md), [docs/METHODS.md](docs/METHODS.md),
 | 0 | Contracts (`schemas.py`, `stage.py`, `llm.py`), docs | done |
 | 1 | Datasheet QA set: 29 public datasheets, 560 cross-checked items (dev 117 / test 443) | done |
 | 2 | Pluggable LLM backend, BM25/dense/hybrid retrieval, 16 stage impls, runner, scorer, HTML report | done (see ROADMAP) |
-| 3 | External sets: TAT-QA (QA), RAGTruth (verifier track), FACTS Grounding (long-form) | done; LLM-AggreFact gated, HOVER deferred |
+| 3 | External sets: TAT-QA (QA), RAGTruth + HOVER (verifier track), FACTS Grounding (long-form), lifecycle/supersession (Vera-Life-style) | done; LLM-AggreFact gated |
 
 Results: [docs/RESULTS.md](docs/RESULTS.md). Headlines:
 - Haiku + hybrid retrieval + part-number filter + cite reaches 0.935 at corpus scope for $0.00084/item.
 - On "near-miss" unanswerables, full GAVEL lifts Haiku from 0.47 to 0.89, close to Opus (0.93), at 1/16 of the cost.
 - Post-hoc verifiers catch few errors on short answers. Verify→revise lifts long-form grounding (FACTS 0.85→0.975).
+- A single Haiku judge call beats decompose-then-verify (RAGTruth, HOVER) at a fraction of the cost.
+- Superseded document revisions are handled in context once revision metadata is visible. Pipelines that re-extract evidence must carry that metadata, or they answer from stale sources without warning.
 
-Final run: [docs/FINAL_RUN.md](docs/FINAL_RUN.md) (~$45 at list prices, CPU-only). LLM backends: [docs/ADAPTERS.md](docs/ADAPTERS.md).
-Item counts: [data/items/STATS.md](data/items/STATS.md).
+Final run: [docs/FINAL_RUN.md](docs/FINAL_RUN.md) (~$50 at list prices, under $35 without the Opus row; CPU-only). LLM backends: [docs/ADAPTERS.md](docs/ADAPTERS.md).
+Item counts: [data/items/STATS.md](data/items/STATS.md). Item audit: [data/items/AUDIT.md](data/items/AUDIT.md).
 
 ## Quickstart
 

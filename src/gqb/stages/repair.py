@@ -6,6 +6,9 @@
                      (``allow_unverifiable`` keeps unverifiable derived claims; default true).
 - regenerate       : if an answer-bearing claim fails, regenerate once with feedback
                      (cite generator, slot model). Not re-verified.
+- warn_stale       : Vera-Life ``warn_stale`` / ``abstain`` actions. If the answer cites a doc
+                     that retrieval marked stale (``retrieve.lifecycle``), prefix a staleness
+                     warning (``action: warn``, default) or abstain (``action: abstain``).
 """
 
 from __future__ import annotations
@@ -83,3 +86,25 @@ class RegenerateStage(BaseStage):
             f"{notes}\nAnswer again, fixing or removing them, or abstain.",
         )
         return _finish(state, out)
+
+
+STALE_WARNING = "Warning: this value comes from a superseded document revision and may be outdated."
+
+
+class WarnStaleStage(BaseStage):
+    slot = "repair"
+    name = "warn_stale"
+    uses_llm = False
+
+    def apply(self, state: PipelineState, llm: StageMeter) -> PipelineState:
+        stale = set(state.scratch.get("stale_docs", []))
+        if not stale or state.answer is None or state.abstained:
+            return state
+        units = {u.id: u for u in state.evidence}
+        cited = {units[c].doc_id for cl in state.answer.claims for c in cl.citations if c in units}
+        if cited & stale or not cited:
+            if self.params.get("action", "warn") == "abstain":
+                state.abstained = True
+            else:
+                state.answer.text = f"{STALE_WARNING} {state.answer.text}"
+        return state

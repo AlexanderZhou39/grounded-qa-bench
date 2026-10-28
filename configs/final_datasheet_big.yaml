@@ -1,4 +1,4 @@
-# Bigger-model reference rows for the final run (1 repeat; ~$24 at public list prices).
+# Bigger-model reference rows for the final run (1 repeat; ~$26 at public list prices).
 run:
   name: final_datasheet
   items: data/items/test.jsonl

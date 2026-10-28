@@ -379,9 +379,10 @@ def run(
 
 @app.command("fetch-external")
 def fetch_external(
-    name: str = typer.Argument(..., help="tatqa | ragtruth | facts"),
+    name: str = typer.Argument(..., help="tatqa | ragtruth | facts | hover | lifecycle"),
     n: int = typer.Option(150, help="tatqa: items (half arithmetic, half span)"),
-    per_cell: int = typer.Option(25, help="ragtruth: pairs per (task, label) cell"),
+    per_cell: int = typer.Option(25, help="ragtruth/hover: pairs per cell"),
+    split: str = typer.Option("dev", help="lifecycle: datasheet split to derive from"),
 ) -> None:
     """Download an external set and adapt it under data/external/{name}/ (not committed)."""
     if name == "tatqa":
@@ -399,6 +400,16 @@ def fetch_external(
 
         ex = facts.build(n=n)
         typer.echo(f"{len(ex)} examples -> data/external/facts/examples.jsonl")
+    elif name == "lifecycle":
+        from gqb.external import lifecycle
+
+        items = lifecycle.build(split)
+        typer.echo(f"{len(items)} items -> data/external/lifecycle/items_{split}.jsonl")
+    elif name == "hover":
+        from gqb.external import hover
+
+        pairs = hover.build(per_cell=per_cell)
+        typer.echo(f"{len(pairs)} pairs -> data/external/hover/pairs.jsonl")
     else:
         raise typer.BadParameter(f"unknown set {name!r}")
 

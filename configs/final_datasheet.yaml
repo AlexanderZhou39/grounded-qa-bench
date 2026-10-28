@@ -1,6 +1,6 @@
 # Final benchmark run on the held-out test split (443 items), corpus scope with the best
 # measured retriever (hybrid BM25+dense with an MPN entity filter; CPU-only, extra `local`).
-# Projected cost at public list prices: ~$12 (see docs/FINAL_RUN.md). Cheap combos use
+# Cost at public list prices: ~$11 (measured; 1 repeat = $5.67) (see docs/FINAL_RUN.md). Cheap combos use
 # 2 repeats (consistency metric); Sonnet/Opus rows 1 repeat via the `final_datasheet_big` config.
 run:
   name: final_datasheet

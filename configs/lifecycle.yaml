@@ -1,0 +1,22 @@
+# Lifecycle (Vera-Life-style supersession). Build first:
+#   bench fetch-external lifecycle --split dev   (or test for the final run)
+# Report: bench report runs/lifecycle --items data/external/lifecycle/items_dev.jsonl
+run:
+  name: lifecycle
+  items: data/external/lifecycle/items_dev.jsonl
+  corpus: data/external/lifecycle/corpus
+  repeats: 1
+  concurrency: 8
+  top_k: 8
+  scope: item
+  default_model: claude-haiku-5-5
+  effort: low
+combos:
+  - {generate: plain}
+  - {generate: cite}
+  - {generate: cite, repair: warn_stale, params: {retrieve: {lifecycle: true}}}
+  - {generate: cite, verify: llm_judge, repair: abstain}
+  - {generate: cite, verify: claim_decompose, repair: abstain}
+  - {cull: gavel_contract, generate: cite}
+  - {cull: gavel_contract, generate: gavel_debate, verify: gavel_scrutinize, repair: abstain}
+  - {generate: cite, models: {generate: claude-sonnet-5-5}}

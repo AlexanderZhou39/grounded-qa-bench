@@ -300,3 +300,114 @@ threshold. Sentence-level entailment over 1200-character windows does not handle
 paraphrase well enough. It is not a usable free cascade stage in this form. A grounding-specific
 small model (MiniCheck-style, trained on synthetic grounding data) would be the next thing to
 try. Haiku llm_judge at $0.0005/pair is the cheap verifier to beat.
+
+# Fairness fixes, lifecycle (Vera-Life), HOVER (2026-10-27)
+
+## Fixes so each method is not penalised for non-critical mismatches
+
+Diagnosed from verifier rationales on correct answers that were flagged anyway (false flags):
+
+| Gap | Fix | Effect |
+|---|---|---|
+| `gavel_scrutinize` required *every* number in a claim to be in the quote, including dates, periods and conditions ("52 weeks ended 30 Mar 2019") | The answer value must be in the quote, or just past its end if the quote was cut at a thousands comma. Unit prefixes are allowed (1.5 mA = 1500 µA; scaled matches tolerate rounding). Other numbers only need to appear in the cited unit | TAT-QA false flags 0.28→0.09, acc 0.69→0.84; dev false flags 0.10→0.03 |
+| Number parsing split thousands separators ("4,351" → 4, 351), so comma-formatted values never matched | Grouped literals are parsed whole as well as in parts | (included above) |
+| Quote alignment was strict in debate scrutiny, `gavel_contract`, `evident_align`, `claim_decompose` | All default to loose alignment: exact, then normalised, then an order-free token window. Values must still match. `align: strict` is still available | Full GAVEL on TAT-QA 0.67→0.81 (false flags 0.35→0.11); dev 0.900→0.917 |
+| `claim_decompose` turned commentary ("the revisions conflict") into claims that then failed | The decompose prompt keeps only asserted facts | dev false flags 0.16→0.11, catch 0.37→0.48 |
+| Evidence-extraction culls (contract, EvidenT) kept bare quotes and lost the document-metadata line (revision header) | Extracted units keep a leading `[...revision/version...]` line. No datasheet or TAT-QA page has one, so those runs are unchanged | GAVEL on stale-only 0.54→1.00 |
+| GAVEL judge dropped the caveats debaters raised | Judge prompt: keep caveats about sources (superseded revision, conflicting values) | (included above) |
+
+Trade-off: loose scrutiny catches fewer near-miss answers (scrutinize catch on near-miss
+0.17→0.04). Strict alignment had been catching them partly by accident, through "quote not found".
+On dev near-miss, full GAVEL now scores 0.78 (was 0.89; n=45 answers from 15 items, ±12 pt). It is
+still the best Haiku-priced option on that slice. The scoring itself was audited for artefacts: the remaining wrong
+answers on dev and TAT-QA are genuine (wrong row, arithmetic, or a year question answered with a value).
+
+## Lifecycle: Vera-Life-style supersession (`configs/lifecycle.yaml`, 111 dev items, item scope)
+
+The corpus has one revision per part, so `bench fetch-external lifecycle` synthesises old
+revisions. Each is a copy of the gold page in which only the answer value differs (37 dev source
+items; verified to differ in exactly one token). Every page carries a revision header.
+
+| Combo | superseded | superseded (dates only) | stale only | $/item |
+|---|---|---|---|---|
+| Haiku plain | 0.95 | 0.95 | 0.92 | 0.0007 |
+| Haiku cite | 0.92 | 0.95 | 0.97 | 0.0008 |
+| Haiku cite + `lifecycle` retrieval + `warn_stale` | 0.92 | 0.92 | **1.00** | 0.0008 |
+| + llm_judge → abstain | 0.92 | 0.92 | 1.00 | 0.0014 |
+| + claim_decompose → abstain | 0.81 | 0.73 | 1.00 | 0.0014 |
+| gavel_contract → cite | 0.92 | 0.89 | 0.95 | 0.0010 |
+| full GAVEL | 0.84 | 0.84 | 1.00 | 0.0018 |
+| Sonnet cite | 0.97 | 0.89 | 0.97 | 0.0136 |
+
+- **Stale rate is 0 for every combo.** No model answered with the superseded value when both revisions were in
+  context, even when only dates indicated which was current. When revision metadata is visible,
+  in-context supersession is solved at Haiku level.
+- Errors are over-abstention, not staleness. A second, conflicting revision costs 2–8 points on
+  verifier combos. They abstain on conflict instead of resolving it (the `explain_conflict` case).
+- **For the BI platform, the risk is provenance loss.** Before the metadata fix, pipelines that
+  re-extract evidence (GAVEL contract, EvidenT) stripped the revision header. Their stale-only score
+  fell to about 0.5: they answered from a superseded source without warning. Version metadata must
+  travel with every evidence unit through every stage. Metadata-driven filtering (`lifecycle`
+  retrieval plus `warn_stale`) is deterministic, free, and reaches 1.00.
+- Caveat: the synthetic revisions are labelled explicitly. Real staleness, where a newer document
+  silently contradicts an older one without metadata, is harder and is not covered.
+
+## HOVER: multi-hop claim verification (`bench vtrack --pairs data/external/hover/pairs.jsonl`)
+
+150 dev claims, 25 per (2/3/4 hops × SUPPORTED/NOT_SUPPORTED) cell. The context is the full 2017
+intro paragraphs of every supporting article (oracle documents), so this measures verification
+only.
+
+| Verifier | 2-hop BAcc | 3-hop | 4-hop | all F1 | all BAcc | $/pair |
+|---|---|---|---|---|---|---|
+| llm_judge Haiku | 0.76 | 0.80 | 0.78 | 0.81 | 0.78 | 0.0003 |
+| llm_judge Sonnet | 0.78 | 0.78 | 0.82 | 0.81 | 0.79 | 0.0043 |
+| claim_decompose Haiku | 0.74 | 0.70 | 0.74 | 0.77 | 0.73 | 0.0005 |
+| claim_decompose Sonnet | 0.70 | 0.70 | 0.74 | 0.77 | 0.71 | 0.0064 |
+| nli_small (calibrated on half) | | | | 0.71 | 0.67 | 0 |
+
+- One holistic judge call beats decompose-then-verify on multi-hop claims at every size. Decomposition
+  breaks the bridge entity across atoms, and each atom is then checked alone. This matches the
+  RAGTruth result.
+- Haiku is within 1–2 points of Sonnet at 1/14 of the cost.
+- The NLI cross-encoder does better here (short, clean Wikipedia prose) than on RAGTruth, but it falls off with hop count
+  (BAcc 0.68 → 0.56 uncalibrated).
+- Reference point: the HOVER paper's BERT verifier is trained on HOVER and is not directly comparable.
+  These are zero-shot.
+
+# Held-out test split, final configuration (443 items, corpus scope, 1 repeat)
+
+`configs/final_datasheet.yaml` with `repeats: 1`: hybrid retrieval + MPN filter, Haiku, all 29 docs in
+scope, pypdfium2 text. It cost $5.67 and took 16 minutes on CPU. (n per tier: T1 145, T2 61, T3 73, T4 13,
+T5 122 of which near-miss 79, T6 29.)
+
+| Combo | all | T1 | T2 | T3 | T4 | T5 | near-miss | T6 | $/item |
+|---|---|---|---|---|---|---|---|---|---|
+| **gavel_contract → cite** | **0.865** | 0.87 | 0.93 | 0.86 | 0.69 | 0.83 | 0.76 | 0.93 | 0.00112 |
+| full GAVEL (contract → debate → scrutinize) | 0.844 | 0.83 | 0.85 | 0.88 | 0.69 | **0.85** | **0.80** | 0.83 | 0.00177 |
+| cite + gavel_scrutinize → abstain | 0.835 | 0.90 | 0.92 | 0.89 | 0.62 | 0.68 | 0.52 | 0.97 | 0.00090 |
+| cite + span_check → abstain | 0.835 | 0.90 | 0.92 | 0.89 | 0.69 | 0.67 | 0.52 | 0.97 | 0.00090 |
+| cite (baseline) | 0.833 | 0.90 | 0.92 | 0.89 | 0.69 | 0.66 | 0.51 | 0.97 | 0.00090 |
+| cite + cascade (scrutinize → Sonnet judge) | 0.831 | 0.90 | 0.92 | 0.88 | 0.69 | 0.66 | 0.51 | 0.97 | 0.00324 |
+| cite + claim_decompose → abstain | 0.828 | 0.85 | 0.80 | 0.86 | 0.54 | 0.80 | 0.72 | 0.93 | 0.00161 |
+| cite + llm_judge → abstain | 0.828 | 0.88 | 0.92 | 0.86 | 0.69 | 0.70 | 0.56 | 0.90 | 0.00152 |
+| plain (no citations) | 0.824 | 0.89 | 0.95 | 0.85 | 0.54 | 0.66 | 0.49 | 0.97 | 0.00083 |
+
+- **The dev findings replicate on held-out data.** GAVEL's evidence contract is the one component that
+  moves the overall number (+3.2 points over cite, for +$0.0002/item). Its gain comes from abstention on
+  near-miss unanswerables: 0.51 → 0.76 (contract) and 0.80 (full GAVEL), n = 79. The cost is
+  answerable-tier accuracy. Full GAVEL drops T1 by 6 points and T6 by 14 points, because it over-abstains
+  when evidence is complete.
+- Post-hoc verifiers (scrutinize, span_check, llm_judge, cascade) are within ±0.5 points of the baseline.
+  The Sonnet cascade triples cost for nothing. claim_decompose trades answerable accuracy for abstention,
+  as GAVEL does, but less efficiently.
+- Overall test accuracy (0.833 for cite) is lower than the dev retrieval sweep (0.935) mainly because of
+  composition. Test has 79 near-miss items (18%), and the dev sweep had 6. Excluding near-miss, test cite
+  scores 0.904 (n=364), against 0.93 on dev at item scope. Corpus-scope retrieval costs about 3 points.
+- **Recommendation for the BI platform (component choice per stage):**
+  - retrieve: hybrid + entity filter
+  - cull: GAVEL-style evidence contract when abstention matters; otherwise none
+  - generate: cited answers with Haiku-class models
+  - verify: a single LLM-judge call only for long-form output, followed by revise; for single values,
+    no verifier
+  - lifecycle: version metadata on every evidence unit, with deterministic supersession filtering

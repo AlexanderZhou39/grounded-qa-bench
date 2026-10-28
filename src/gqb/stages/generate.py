@@ -15,7 +15,7 @@ from gqb.llm import Message, StageMeter
 from gqb.schemas import PipelineState
 from gqb.stages.base import BaseStage
 from gqb.stages.common import ANSWER_RULES, CITE_RULES, GenOut, format_evidence, to_answer
-from gqb.textmatch import find_span
+from gqb.textmatch import align_quote
 
 
 def _ask(state: PipelineState, extra: str = "") -> list[Message]:
@@ -87,7 +87,7 @@ def scrutinize(out: GenOut, state: PipelineState) -> list[str]:
             problems.append(f"claim {i} cites nothing")
         if missing:
             problems.append(f"claim {i} cites unknown ids {missing}")
-        if c.quote and not any(find_span(c.quote, units[x].text) for x in cites if x in units):
+        if c.quote and not any(align_quote(c.quote, units[x].text) for x in cites if x in units):
             problems.append(f"claim {i} quote not found in cited evidence")
     return problems
 
@@ -133,7 +133,9 @@ class GavelDebateStage(BaseStage):
                 "\n\nYou are the JUDGE. Debaters proposed the answers below; a mechanical "
                 "scrutinizer checked their citations. Select the sufficient evidence and "
                 "issue the final answer with your own claims, or abstain if no proposal is "
-                "properly supported.\n\n" + "\n\n".join(report),
+                "properly supported. Keep in your answer text any caveat a proposal raises "
+                "about the sources (e.g. a superseded or outdated revision, conflicting "
+                "values).\n\n" + "\n\n".join(report),
             ),
             judge_model,
             system=ANSWER_RULES + CITE_RULES,

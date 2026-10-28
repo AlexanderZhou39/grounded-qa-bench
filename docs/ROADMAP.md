@@ -14,9 +14,10 @@
 - [x] `bench split` → dev / test / disputed, plus `data/items/STATS.md`
 - [x] `bench validate-items`: every gold quote is found on its page
 - [x] `bench audit`: interactive human audit, with `--apply`
-- [x] Human audit replaced: disputed items are discarded, not adjudicated. Near-miss coverage was
+- [x] Human audit replaced by an agent audit of a stratified test sample: 60 items, 0 gold errors
+      (data/items/AUDIT.md). Disputed items are discarded, not adjudicated. Near-miss coverage was
       raised instead (`--near-miss-per-doc 6`, Opus cross-check) to 94 confirmed items (test 79).
-      Optional: spot-check the 15 dev near-miss items with `bench audit`.
+      A ≥300-item human audit (`bench audit`) remains optional.
 - [x] Tier 4 (cross-doc comparison), 16 items, all cross-check agree. More need more same-family docs.
 - [x] Harder tier 5, first kind: `near_miss_typ` asks for typ when only min/max is stated
       (94 cross-check-confirmed items; Haiku cite 0.47, full GAVEL 0.89). Reported as bucket `5:near_miss_typ`.
@@ -48,10 +49,14 @@
 - [x] Free-text answers plus a fixed judge: FACTS track (`bench facts`). The judge must differ from the
       generator (enforced). The judge can run through the file queue (docs/ADAPTERS.md)
 - [x] Replaceable LLM backend (`GQB_LLM_CLIENT`, `GQB_MODEL_MAP`, file queue): docs/ADAPTERS.md
-- [x] Final-run configs and cost projection (~$45 at list prices): docs/FINAL_RUN.md
-- [ ] Vera-Life-style lifecycle handling (stale/superseded facts). Blocked: needs pairs of document
-      revisions with known changed values. The corpus has one revision per part. Candidate source:
-      vendor datasheet revision histories (old revisions are often still public)
+- [x] Final-run configs and cost (~$50 at list prices; Haiku config measured): docs/FINAL_RUN.md
+- [x] Vera-Life-style lifecycle: synthetic revision pairs (`bench fetch-external lifecycle`,
+      `configs/lifecycle.yaml`), `lifecycle` retrieval param (evidence state from `revisions.json`),
+      `warn_stale` repair. Only 6 real value changes were found in the corpus's revision histories,
+      too few to score
+- [ ] Lifecycle with real revisions (old public datasheet revisions) and unlabelled conflicts
+- [x] Fairness pass: loose alignment by default, number grounding in scrutiny limited to the answer
+      value, decompose skips commentary, metadata survives evidence extraction (RESULTS.md)
 
 ## Phase 3: external sets
 - [x] TAT-QA adapter (`external/tatqa.py`, `configs/tatqa.yaml`): 150 numeric items, unit-free scoring
@@ -61,7 +66,8 @@
       response-level judge, verify→revise repair
 - [ ] LLM-AggreFact: licence permits eval use; blocked only on HF gated access (accept the terms on
       Hugging Face, then set `HF_TOKEN`)
-- [ ] HOVER: needs a Wikipedia dump plus retrieval; FinQA: redundant with TAT-QA
+- [x] HOVER verifier track, oracle docs from the authors' 2017 Wikipedia db (`fetch-external hover`)
+- [ ] HOVER open retrieval (BM25 over the 5M-article db); FinQA: redundant with TAT-QA
 - [ ] GAVEL fidelity: no public reference numbers on a shared dataset yet; compare once the
       GAVEL repo releases eval data
 - [ ] FACTS: add a 2nd/3rd judge from other model families plus the eligibility filter

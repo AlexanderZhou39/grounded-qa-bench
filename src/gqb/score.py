@@ -114,6 +114,13 @@ def enum_correct(value: object, unit: str | None, item: BenchItem) -> bool:
     return enum_match(str(value), str(item.gold_answer), options)
 
 
+# an answer from a superseded-only source counts as correct when it says so explicitly
+STALE_WORDS = re.compile(
+    r"(?i)\b(supersed\w*|obsolete|outdated|out of date|stale|no longer current|not (?:the )?"
+    r"current|newer revision|later revision)\b"
+)
+
+
 def score_record(rec: RunRecord, item: BenchItem) -> RecordScore:
     st = rec.state
     error = any(t.error for t in st.trace)
@@ -121,6 +128,8 @@ def score_record(rec: RunRecord, item: BenchItem) -> RecordScore:
     correct = False
     if item.answer_type == AnswerType.UNANSWERABLE:
         correct = abstained and not error
+        if item.meta.get("kind") == "stale_only" and not abstained and st.answer is not None:
+            correct = bool(STALE_WORDS.search(st.answer.text))  # Vera-Life warn_stale
     elif not abstained:
         v = st.answer.value
         if item.answer_type == AnswerType.NUMERIC and as_number(v) is not None:

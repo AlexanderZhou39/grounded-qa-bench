@@ -42,6 +42,8 @@ uv run bench fetch-external ragtruth && uv run bench vtrack --verifier llm_judge
 uv run bench facts --n 40          # long-form + FACTS judge; generator "{model}+repair" = verify->revise
 uv sync --extra local              # CPU models for dense/hybrid retrieval and nli_small
 uv run bench run configs/sweep_retrieval.yaml
+uv run bench fetch-external lifecycle --split dev && uv run bench run configs/lifecycle.yaml
+uv run bench fetch-external hover && uv run bench vtrack --pairs data/external/hover/pairs.jsonl --out runs/vtrack_hover
 # final run: docs/FINAL_RUN.md
 ```
 

@@ -101,8 +101,18 @@ def _aligns(quote: str, text: str, align: str) -> bool:
     return bool(find_span(quote, text)) or (align == "loose" and find_tokens(quote, text))
 
 
+_SCALES = (1.0, 1e3, 1e-3, 1e6, 1e-6)
+
+
+def _as_float(v: object) -> float | None:
+    try:
+        return float(str(v).replace(",", "")) if v is not None else None
+    except ValueError:
+        return None
+
+
 def scrutinize_claim(
-    claim: Claim, state: PipelineState, verifier: str, align: str = "strict"
+    claim: Claim, state: PipelineState, verifier: str, align: str = "loose"
 ) -> ClaimVerdict:
     units = unit_map(state)
     cited = [units[c] for c in claim.citations if c in units]
@@ -134,7 +144,27 @@ def scrutinize_claim(
         )
     qnums = _question_numbers(state)
     nums = [n for n in numbers_in(claim.text) if not any(abs(n - q) < 1e-9 for q in qnums)]
-    missing = [n for n in nums if not contains_number(claim.quote, n)]
+    value = _as_float(state.answer.value) if state.answer else None
+    context = "\n".join(u.text for u in cited)
+
+    at = host.text.find(claim.quote)
+    tail = claim.quote + (
+        host.text[at + len(claim.quote) : at + len(claim.quote) + 12] if at >= 0 else ""
+    )
+
+    def grounded(n: float) -> bool:
+        # the answer value must be in the quote, or just past its end when the quote was cut
+        # at a thousands comma ("$4" for "$4,206"). Unit prefixes are allowed (1.5 mA =
+        # 1500 uA; 1,791.8 million = 1,791,790 thousand, so scaled matches allow rounding).
+        # Other numbers (dates, periods, test conditions) only need to be in the cited unit.
+        if contains_number(tail, n) or any(
+            contains_number(tail, n * k, rel_tol=1e-3) for k in _SCALES[1:]
+        ):
+            return True
+        is_value = value is not None and abs(abs(n) - abs(value)) < 1e-9
+        return not is_value and contains_number(context, n)
+
+    missing = [n for n in nums if not grounded(n)]
     if missing and claim.derived:
         return ClaimVerdict(
             claim_id=claim.id,
@@ -178,7 +208,7 @@ class GavelScrutinizeStage(BaseStage):
     uses_llm = False
 
     def apply(self, state: PipelineState, llm: StageMeter) -> PipelineState:
-        align = self.params.get("align", "strict")
+        align = self.params.get("align", "loose")
         state.verdicts = [scrutinize_claim(c, state, self.name, align) for c in _claims(state)]
         return state
 
@@ -287,7 +317,9 @@ class ClaimDecomposeStage(BaseStage):
             [Message(role="user", content=f"Q: {state.question}\nA: {state.answer.text}")],
             self.model,
             system="Split the answer into atomic factual claims. Each claim must be "
-            "self-contained (name the part, parameter, condition and value). Skip hedges.",
+            "self-contained (name the part, parameter, condition and value). Skip hedges, "
+            "and skip commentary about the sources themselves (which document or revision "
+            "says what, conflicts between sources, caveats): only the facts asserted.",
             response_model=AtomicClaims,
             max_tokens=2048,
         )
@@ -320,13 +352,16 @@ class ClaimDecomposeStage(BaseStage):
             claims.append(
                 Claim(id=cid, text=a, citations=[eid] if eid else [], quote=v.quote if v else None)
             )
+            why = None
             if v is None:
-                verdict, conf = Verdict.UNVERIFIABLE, 0.0
+                verdict, conf, why = Verdict.UNVERIFIABLE, 0.0, "no verdict returned"
             elif v.verdict == "supported":
-                aligned = eid in units and v.quote and find_span(v.quote, units[eid].text)
+                # loose alignment: PDF tables reorder cells; the quote must still be there
+                aligned = eid in units and v.quote and _aligns(v.quote, units[eid].text, "loose")
                 verdict, conf = (Verdict.SUPPORTED, 0.9) if aligned else (Verdict.UNSUPPORTED, 0.6)
+                why = None if aligned else "supporting quote not found in evidence"
             else:
-                verdict, conf = Verdict(v.verdict), 0.8
+                verdict, conf, why = Verdict(v.verdict), 0.8, f"judged {v.verdict}"
             verdicts.append(
                 ClaimVerdict(
                     claim_id=cid,
@@ -334,6 +369,7 @@ class ClaimDecomposeStage(BaseStage):
                     confidence=conf,
                     verifier=self.name,
                     evidence_ids=[eid] if eid else [],
+                    rationale=why,
                 )
             )
         state.answer.claims = claims
@@ -351,7 +387,7 @@ class CascadeStage(BaseStage):
     def apply(self, state: PipelineState, llm: StageMeter) -> PipelineState:
         cheap = self.params.get("cheap", "gavel_scrutinize")
         threshold = float(self.params.get("escalate_below", 0.7))
-        align = self.params.get("align", "strict")
+        align = self.params.get("align", "loose")
         claims = _claims(state)
         first = [
             scrutinize_claim(c, state, f"cascade:{cheap}", align)

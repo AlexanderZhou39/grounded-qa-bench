@@ -8,7 +8,12 @@ from gqb.stages.base import BaseStage, NoneStage
 from gqb.stages.common import StageContext
 from gqb.stages.cull import EvidentAlignStage, GavelContractStage, LLMFilterStage
 from gqb.stages.generate import CiteStage, GavelDebateStage, PlainStage
-from gqb.stages.repair import AbstainStage, DropUnsupportedStage, RegenerateStage
+from gqb.stages.repair import (
+    AbstainStage,
+    DropUnsupportedStage,
+    RegenerateStage,
+    WarnStaleStage,
+)
 from gqb.stages.retrieve import BM25Stage, DenseStage, HybridStage
 from gqb.stages.verify import (
     CascadeStage,
@@ -38,6 +43,7 @@ REGISTRY: dict[str, dict[str, type[BaseStage]]] = {
     "repair": {
         "drop_unsupported": DropUnsupportedStage,
         "abstain": AbstainStage,
+        "warn_stale": WarnStaleStage,
         "regenerate": RegenerateStage,
     },
 }
