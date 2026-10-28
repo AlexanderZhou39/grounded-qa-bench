@@ -1,0 +1,27 @@
+# One combo = one impl per slot + model per slot (+ impl params). Slot order is fixed:
+# retrieve -> cull -> generate -> verify -> repair. See docs/DESIGN.md.
+# Run: uv run bench run configs/example.yaml && uv run bench report runs/example
+run:
+  name: example
+  items: data/items/dev.jsonl
+  repeats: 3            # >1 measures consistency (each repeat is a separately cached sample)
+  concurrency: 8
+  top_k: 8
+  scope: item           # item: retrieve within the item's docs | corpus: all docs
+  default_model: claude-haiku-5-5   # for slots without an explicit model
+  effort: low
+
+combos:
+  - generate: cite
+    models: {generate: claude-haiku-5-5}
+
+  - generate: cite
+    verify: cascade
+    repair: abstain
+    models:
+      generate: claude-sonnet-5-5
+    params:
+      verify:
+        cheap: gavel_scrutinize       # or span_check
+        expensive_model: claude-opus-5-5
+        escalate_below: 0.7

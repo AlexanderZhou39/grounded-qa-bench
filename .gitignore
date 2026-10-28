@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.pytest_cache/
+.ruff_cache/
+
+# Datasheet PDFs are distributed out-of-band (see README "Data policy")
+data/pdfs/
+data/corpus/
+data/local/
+*.zip
+
+# Run outputs and LLM cache
+runs/
+.cache/

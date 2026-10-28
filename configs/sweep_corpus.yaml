@@ -1,0 +1,21 @@
+# Same questions, but retrieval searches all 29 docs (no doc_ids hint). Closer to a real
+# assistant over a document store; tests misattribution across similar parts.
+run:
+  name: sweep_corpus
+  items: data/items/dev.jsonl
+  repeats: 1
+  concurrency: 8
+  scope: corpus
+  top_k: 8
+  default_model: claude-haiku-5-5
+
+combos:
+  - {generate: cite}
+  - {generate: cite, verify: gavel_scrutinize, repair: abstain}
+  - {cull: evident_align, generate: cite}
+  - {cull: gavel_contract, generate: cite, verify: gavel_scrutinize, repair: abstain}
+  - generate: cite
+    verify: cascade
+    repair: abstain
+    params: {verify: {cheap: gavel_scrutinize, escalate_below: 0.9, expensive_model: claude-sonnet-5-5}}
+  - {generate: cite, models: {generate: claude-sonnet-5-5}}

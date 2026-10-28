@@ -1,0 +1,37 @@
+# Public vendor datasheets included in the corpus. Reviewed by hand.
+# Excluded from the source folder (do not add back): customer-prefixed or customer-renamed
+# filenames, hash-named files, customer/feedback subfolders, edited variants (*_no_pin),
+# scanned/no-text-layer drawings, hardware user manuals (>1000 pages), and any document marked
+# confidential/NDA.
+#
+# family: groups similar parts, used to pick distractor (tier 6) siblings.
+docs:
+  - {file: 16748728-cypress-cy7c1049bv33-12vi-ds.pdf, doc_id: cypress_cy7c1049bv33, vendor: Cypress, mpn: CY7C1049BV33, family: sram}
+  - {file: REN_71V67602_DST_20141115.pdf, doc_id: renesas_71v67602, vendor: Renesas (IDT), mpn: 71V67602, family: sram}
+  - {file: MX25L3233F.pdf, doc_id: macronix_mx25l3233f, vendor: Macronix, mpn: MX25L3233F, family: memory}
+  - {file: MT40A512M16TB_062E_R.pdf, doc_id: micron_mt40a512m16, vendor: Micron, mpn: MT40A512M16TB-062E:R, family: memory}
+  - {file: APW6017QFI.pdf, doc_id: anpec_apw6017, vendor: ANPEC, mpn: APW6017, family: dcdc}
+  - {file: TPS51285a_TPS51285b.pdf, doc_id: ti_tps51285, vendor: Texas Instruments, mpn: TPS51285A, family: dcdc}
+  - {file: TPS51388VABR.pdf, doc_id: ti_tps51388, vendor: Texas Instruments, mpn: TPS51388, family: dcdc}
+  - {file: AQZ205.pdf, doc_id: panasonic_aqz205, vendor: Panasonic, mpn: AQZ205, family: switch}
+  - {file: DMN2056U.pdf, doc_id: diodes_dmn2056u, vendor: Diodes Incorporated, mpn: DMN2056U, family: switch}
+  - {file: adg417.pdf, doc_id: adi_adg417, vendor: Analog Devices, mpn: ADG417, family: analog_switch}
+  - {file: TMUX136RSE.pdf, doc_id: ti_tmux136, vendor: Texas Instruments, mpn: TMUX136, family: analog_switch}
+  - {file: TMUXHS4412RUA.pdf, doc_id: ti_tmuxhs4412, vendor: Texas Instruments, mpn: TMUXHS4412, family: analog_switch}
+  - {file: sn74lvc1g00-346591.pdf, doc_id: ti_sn74lvc1g00, vendor: Texas Instruments, mpn: SN74LVC1G00, family: logic}
+  - {file: CYUSB3314-88LTXI.pdf, doc_id: infineon_cyusb3314, vendor: Infineon (Cypress), mpn: CYUSB3314, family: usb}
+  - {file: FT4232H_56Q.pdf, doc_id: ftdi_ft4232h, vendor: FTDI, mpn: FT4232H, family: usb}
+  - {file: MCP7940NT-I_MNY.pdf, doc_id: microchip_mcp7940n, vendor: Microchip, mpn: MCP7940N, family: timing}
+  - {file: abm8.pdf, doc_id: abracon_abm8, vendor: Abracon, mpn: ABM8, family: timing}
+  - {file: XGL4040-472ME.pdf, doc_id: coilcraft_xgl4040, vendor: Coilcraft, mpn: XGL4040-472ME, family: passive}
+  - {file: TLV320aic3204.pdf, doc_id: ti_tlv320aic3204, vendor: Texas Instruments, mpn: TLV320AIC3204, family: audio}
+  - {file: mspm0c1104.pdf, doc_id: ti_mspm0c1104, vendor: Texas Instruments, mpn: MSPM0C1104, family: mcu}
+  - {file: REN_r01ds0014ej_r8c38w_DST_20101124.pdf, doc_id: renesas_r8c38w, vendor: Renesas, mpn: R8C/38W, family: mcu}
+  - {file: REN_r01ds0098ej0180_rx63n631_DST_20140513.pdf, doc_id: renesas_rx63n, vendor: Renesas, mpn: RX63N, family: mcu}
+  - {file: r01ds0131ej0380-rl78g13.pdf, doc_id: renesas_rl78g13, vendor: Renesas, mpn: RL78/G13, family: mcu}
+  - {file: r01ds0276ej0240-rx651.pdf, doc_id: renesas_rx651, vendor: Renesas, mpn: RX651, family: mcu}
+  - {file: r01ds0331ej0110-rx72t.pdf, doc_id: renesas_rx72t, vendor: Renesas, mpn: RX72T, family: mcu}
+  - {file: r01ds0366ej0140-ra6m5.pdf, doc_id: renesas_ra6m5, vendor: Renesas, mpn: RA6M5, family: mcu}
+  - {file: r01ds0407ej0110-rx26t.pdf, doc_id: renesas_rx26t, vendor: Renesas, mpn: RX26T, family: mcu}
+  - {file: fpga1.pdf, doc_id: altera_excalibur, vendor: Altera, mpn: EPXA1 (Excalibur), family: soc}
+  - {file: tda4vm.pdf, doc_id: ti_tda4vm, vendor: Texas Instruments, mpn: TDA4VM, family: soc}

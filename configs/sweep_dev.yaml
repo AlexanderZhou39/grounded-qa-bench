@@ -1,0 +1,42 @@
+# First real sweep (ROADMAP Phase 2 order of work). Generator fixed to Haiku so differences
+# come from cull/verify/repair; then model-size rows. Judge-free scoring (numeric/abstain).
+run:
+  name: sweep_dev
+  items: data/items/dev.jsonl
+  repeats: 3
+  concurrency: 8
+  default_model: claude-haiku-5-5
+
+combos:
+  # 1. baselines
+  - {generate: plain}
+  - {generate: cite}
+  # 2. one verifier at a time (+abstain)
+  - {generate: cite, verify: span_check, repair: abstain}
+  - {generate: cite, verify: gavel_scrutinize, repair: abstain}
+  - {generate: cite, verify: gavel_scrutinize, repair: abstain, params: {verify: {align: loose}}}
+  - {generate: cite, verify: llm_judge, repair: abstain}
+  - {generate: cite, verify: claim_decompose, repair: abstain}
+  # 3. cull variants
+  - {cull: llm_filter, generate: cite}
+  - {cull: evident_align, generate: cite}
+  - {cull: gavel_contract, generate: cite}
+  # 4. debate
+  - {cull: gavel_contract, generate: gavel_debate, verify: gavel_scrutinize, repair: abstain}
+  # 5. cascade thresholds (expensive verifier = Sonnet)
+  - generate: cite
+    verify: cascade
+    repair: abstain
+    params: {verify: {cheap: gavel_scrutinize, escalate_below: 0.5, expensive_model: claude-sonnet-5-5}}
+  - generate: cite
+    verify: cascade
+    repair: abstain
+    params: {verify: {cheap: gavel_scrutinize, escalate_below: 0.9, expensive_model: claude-sonnet-5-5}}
+  - generate: cite
+    verify: cascade
+    repair: abstain
+    params: {verify: {cheap: gavel_scrutinize, align: loose, escalate_below: 0.9, expensive_model: claude-sonnet-5-5}}
+  # 6. model size per stage
+  - {generate: cite, models: {generate: claude-sonnet-5-5}}
+  - {generate: cite, models: {generate: claude-opus-5-5}}
+  - {cull: evident_align, generate: cite, models: {cull: claude-haiku-5-5, generate: claude-sonnet-5-5}}

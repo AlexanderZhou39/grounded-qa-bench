@@ -1,0 +1,20 @@
+# Cheap end-to-end check: every slot impl at least once, Haiku everywhere.
+run:
+  name: smoke
+  items: data/items/dev.jsonl
+  limit: 12
+  repeats: 1
+  concurrency: 8
+  default_model: claude-haiku-5-5
+
+combos:
+  - {generate: plain}
+  - {generate: cite}
+  - {generate: cite, verify: span_check, repair: abstain}
+  - {cull: llm_filter, generate: cite, verify: llm_judge, repair: drop_unsupported}
+  - {cull: evident_align, generate: cite, verify: gavel_scrutinize, repair: abstain}
+  - {cull: gavel_contract, generate: gavel_debate, verify: claim_decompose, repair: regenerate}
+  - generate: cite
+    verify: cascade
+    repair: abstain
+    params: {verify: {cheap: gavel_scrutinize, escalate_below: 0.7}}
