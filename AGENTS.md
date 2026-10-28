@@ -2,6 +2,7 @@
 
 Start here. Read `docs/DESIGN.md` before writing any stage code and `docs/DATASET.md` before touching data.
 The current task list is `docs/ROADMAP.md`: pick the first unchecked box in the lowest unfinished phase.
+To choose which combos to run next, read `docs/STATUS.md`: stage options, measured results with their data, and untested combos in priority order.
 
 ## Layout
 
