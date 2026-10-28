@@ -98,4 +98,7 @@ These are simplified adaptations, not reproductions. Fidelity checks against the
 | LLM judge (FACTS-style) | verify `llm_judge` | `stages/verify.py` | One call judges all claims: supported / unsupported / contradicted, with confidence | No multi-judge ensemble |
 | Cascade (our hypothesis) | verify `cascade` | `stages/verify.py` | Cheap deterministic verifier first; claims with confidence < `escalate_below` go to `llm_judge` on `expensive_model` | Confidences are fixed per deterministic outcome (0.3–0.95) |
 | RAGChecker-style diagnostics | scorer | `score.py` | Citation precision/recall at page level, verifier catch rate, false-flag rate | No claim-level recall against gold claims yet |
+| rag-facts-check repair (long-form) | `bench facts` `{model}+repair` | `external/facts.py` | claim_decompose finds unsupported atomic claims; one call rewrites the response without them | One revise round |
+| FACTS Grounding judge | `bench facts` | `external/facts.py` | FACTS `response_level` prompt (downloaded at runtime) on a fixed judge model | 1 judge, not 3; no eligibility filter |
+| Verifier track | `bench vtrack` | `vtrack.py` | Any verify impl scored on (context, response, label) pairs; P/R/F1/BAcc | RAGTruth now; LLM-AggreFact pending access |
 | Vera-Life, VeriFastScore | — | — | Not implemented (see ROADMAP) | — |

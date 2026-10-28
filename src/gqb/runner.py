@@ -22,6 +22,7 @@ from gqb.stages import StageContext, build_pipeline
 class RunConfig(BaseModel):
     name: str = "default"
     items: str = "data/items/dev.jsonl"
+    corpus: str = "data/corpus"  # external sets: data/external/{set}/corpus
     tiers: list[int] | None = None
     limit: int | None = None
     repeats: int = 1

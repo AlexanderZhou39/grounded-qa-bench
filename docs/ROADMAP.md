@@ -14,7 +14,9 @@
 - [x] `bench split` → dev / test / disputed, plus `data/items/STATS.md`
 - [x] `bench validate-items`: every gold quote is found on its page
 - [x] `bench audit`: interactive human audit, with `--apply`
-- [ ] Human audit of `dev.jsonl` (~100 items, ~1 h). Until then items are `audited: false`.
+- [ ] Human audit, scoped down: spot-check the slices the findings rest on (6 near-miss T5 dev
+      items and 3 T4 items). The 24 disputed items are excluded and can be discarded; generate
+      more near-miss/T4 items instead.
 - [x] Tier 4 (cross-doc comparison), 16 items, all cross-check agree. More need more same-family docs.
 - [x] Harder tier 5, first kind: `near_miss_typ` asks for typ when only min/max is stated
       (37 cross-check-confirmed items; Haiku cite scores 0.33). Reported as bucket `5:near_miss_typ`.
@@ -45,6 +47,13 @@
 - [ ] Vera-Life-style lifecycle handling (stale/superseded facts). Needs versioned docs; design first.
 
 ## Phase 3: external sets
-- [ ] Adapters to `BenchItem`: FACTS Grounding public, TAT-QA/FinQA subset, HOVER subset
-- [ ] Verifier-track adapters: RAGTruth, LLM-AggreFact (claim + doc → label)
-- [ ] Check our GAVEL and rag-facts-check implementations against the paper and repo numbers
+- [x] TAT-QA adapter (`external/tatqa.py`, `configs/tatqa.yaml`): 150 numeric items, unit-free scoring
+- [x] Verifier track (`vtrack.py`, `bench vtrack`) + RAGTruth adapter; llm_judge matches the
+      paper's prompt-baseline profile (RESULTS.md)
+- [x] FACTS Grounding track (`external/facts.py`, `bench facts`): long-form answers, FACTS
+      response-level judge, verify→revise repair
+- [ ] LLM-AggreFact: blocked on HF gated access (needs a personal token that accepted the terms)
+- [ ] HOVER: needs a Wikipedia dump plus retrieval; FinQA: redundant with TAT-QA
+- [ ] GAVEL fidelity: no public reference numbers on a shared dataset yet; compare once the
+      GAVEL repo releases eval data
+- [ ] FACTS: add a 2nd/3rd judge from other model families plus the eligibility filter

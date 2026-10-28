@@ -1,0 +1,26 @@
+# Phase 3: TAT-QA (financial table + text, numeric). Fetch first: bench fetch-external tatqa
+# Report: bench report runs/tatqa --items data/external/tatqa/items.jsonl
+run:
+  name: tatqa
+  items: data/external/tatqa/items.jsonl
+  corpus: data/external/tatqa/corpus
+  repeats: 1
+  concurrency: 8
+  top_k: 8
+  scope: item
+  default_model: claude-haiku-5-5
+  effort: low
+combos:
+  - {generate: plain}
+  - {generate: cite}
+  - {generate: cite, verify: span_check, repair: abstain}
+  - {generate: cite, verify: gavel_scrutinize, repair: abstain, params: {verify: {align: loose}}}
+  - {generate: cite, verify: llm_judge, repair: abstain}
+  - {generate: cite, verify: claim_decompose, repair: abstain}
+  - {cull: gavel_contract, generate: gavel_debate, verify: gavel_scrutinize, repair: abstain}
+  - {cull: evident_align, generate: cite}
+  - generate: cite
+    verify: cascade
+    repair: abstain
+    params: {verify: {cheap: gavel_scrutinize, align: loose, escalate_below: 0.9, expensive_model: claude-sonnet-5-5}}
+  - {generate: cite, models: {generate: claude-sonnet-5-5}}

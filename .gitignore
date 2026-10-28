@@ -9,6 +9,7 @@ __pycache__/
 data/pdfs/
 data/corpus/
 data/local/
+data/external/
 *.zip
 
 # Run outputs and LLM cache

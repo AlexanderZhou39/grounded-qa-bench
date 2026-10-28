@@ -10,6 +10,7 @@ Groundedness: page-level citation precision/recall vs gold_evidence, over cited 
 
 from __future__ import annotations
 
+import re
 import statistics
 from collections import defaultdict
 from collections.abc import Iterable
@@ -54,6 +55,46 @@ def _answer_key(rec: RunRecord) -> str:
     return normalize(str(a.value))
 
 
+_SCALE_WORDS = [
+    (re.compile(r"billion|\bbn\b|\bb\b", re.I), 1e9),
+    (re.compile(r"million|\bmn\b|\bm\b|[$€£]m\b|\bmm\b", re.I), 1e6),
+    (re.compile(r"thousand|\bk\b|\b000s?\b", re.I), 1e3),
+]
+_PLAIN_NUMBER = re.compile(r"^\s*[-+]?[\d,]*\.?\d+\s*$")
+
+
+def as_number(value: object) -> float | None:
+    """Numeric answer value; also accepts a string that is only a number ("2019")."""
+    if isinstance(value, float | int):
+        return float(value)
+    if isinstance(value, str) and _PLAIN_NUMBER.match(value):
+        return float(value.replace(",", ""))
+    return None
+
+
+def _unit_scale(unit: str | None) -> float:
+    for pat, f in _SCALE_WORDS:
+        if unit and pat.search(unit):
+            return f
+    return 1.0
+
+
+def numeric_correct(value: float, unit: str | None, item: BenchItem) -> bool:
+    """Datasheet items compare with units. External ``unit_free`` items (TAT-QA) ignore the
+    physical unit but normalize scale words on both sides ("1.2 million" vs gold 1200 thousand)
+    and accept either sign: TAT-QA gold is inconsistent about "change"/"cash used" signs."""
+    gold, tol = float(item.gold_answer), item.tolerance or 0.01
+    if not item.meta.get("unit_free"):
+        return numeric_match(value, unit, gold, item.unit, tol)
+    golds = {gold, *(gold * f for f in item.meta.get("scale_factors", []))}
+    preds = {value, value * _unit_scale(unit)}
+    for g in golds:
+        for v in preds:
+            if (abs(v) <= tol) if g == 0 else abs(abs(v) - abs(g)) <= tol * abs(g):
+                return True
+    return False
+
+
 def enum_correct(value: object, unit: str | None, item: BenchItem) -> bool:
     """Enum (which-part) answers. A numeric answer counts if it equals the gold option's stated
     value and not any other option's (models often answer with the winning value)."""
@@ -82,14 +123,8 @@ def score_record(rec: RunRecord, item: BenchItem) -> RecordScore:
         correct = abstained and not error
     elif not abstained:
         v = st.answer.value
-        if item.answer_type == AnswerType.NUMERIC and isinstance(v, float | int):
-            correct = numeric_match(
-                float(v),
-                st.answer.unit,
-                float(item.gold_answer),
-                item.unit,
-                item.tolerance or 0.01,
-            )
+        if item.answer_type == AnswerType.NUMERIC and as_number(v) is not None:
+            correct = numeric_correct(as_number(v), st.answer.unit, item)
         elif item.answer_type == AnswerType.ENUM:
             correct = enum_correct(v, st.answer.unit, item)
 
@@ -121,9 +156,8 @@ def score_record(rec: RunRecord, item: BenchItem) -> RecordScore:
     raw_correct = None
     a = st.answer
     if a is not None and a.value is not None and item.answer_type == AnswerType.NUMERIC:
-        raw_correct = isinstance(a.value, float | int) and numeric_match(
-            float(a.value), a.unit, float(item.gold_answer), item.unit, item.tolerance or 0.01
-        )
+        num = as_number(a.value)
+        raw_correct = num is not None and numeric_correct(num, a.unit, item)
     elif a is not None and a.value is not None and item.answer_type == AnswerType.ENUM:
         raw_correct = enum_correct(a.value, a.unit, item)
     elif a is not None and a.value is not None and item.answer_type == AnswerType.UNANSWERABLE:

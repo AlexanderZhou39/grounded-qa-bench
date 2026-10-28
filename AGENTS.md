@@ -35,6 +35,11 @@ uv run bench verify-corpus && uv run bench build-corpus
 uv run bench validate-items data/items/dev.jsonl
 uv run bench run configs/sweep_dev.yaml [--only evident_align] [--limit 20]
 uv run bench report runs/sweep_dev
+# Phase 3 external sets (downloaded into data/external/, never committed)
+uv run bench fetch-external tatqa && uv run bench run configs/tatqa.yaml
+uv run bench report runs/tatqa --items data/external/tatqa/items.jsonl
+uv run bench fetch-external ragtruth && uv run bench vtrack --verifier llm_judge --model claude-haiku-5-5
+uv run bench facts --n 40          # long-form + FACTS judge; generator "{model}+repair" = verify->revise
 ```
 
 ## Adding a stage

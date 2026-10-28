@@ -138,3 +138,98 @@ Full per-tier tables: `runs/sweep_dev/report.html` (not committed; regenerate wi
 4. GAVEL debate with Haiku debaters and a Sonnet judge (`judge_model`), to see if it matches
    Sonnet cite on near-miss for less.
 5. Grow T4 and near-miss T5 on the test split before drawing conclusions from them.
+
+---
+
+# Phase 3: external sets (2026-10-27)
+
+Downloaded and adapted by script (`bench fetch-external tatqa|ragtruth|facts`). Nothing under
+`data/external/` is committed. Spend for all of Phase 3: about $8.
+
+## TAT-QA: numeric QA over financial table + text (`configs/tatqa.yaml`, 150 dev items)
+
+75 arithmetic (tier 3) + 75 numeric span (tier 1) questions. Each context (table rendered as
+pipe rows plus paragraphs) is one single-page doc. Scoring is unit-free: scale words are
+normalized on both sides and either sign is accepted, because TAT-QA gold is inconsistent about
+"change" and "cash used" signs. Before that fix, 25 of 28 baseline misses were artifacts.
+
+| combo | acc | T1 | T3 | catch | false flag | $/item |
+|---|---|---|---|---|---|---|
+| cite @ Sonnet | **0.953** | 0.973 | 0.933 | – | – | 0.0061 |
+| plain (Haiku) | 0.927 | 0.973 | 0.880 | – | – | **0.00028** |
+| cite (Haiku) | 0.907 | 0.946 | 0.866 | – | – | 0.00035 |
+| cite + span_check | 0.907 | 0.946 | 0.866 | 0.0 | 0.0 | 0.00035 |
+| cite + llm_judge | 0.893 | 0.933 | 0.853 | 0.0 | 0.014 | 0.00060 |
+| cite + cascade(gavel loose → Sonnet) | 0.893 | 0.946 | 0.840 | 0.1 | 0.014 | 0.0033 |
+| cite + claim_decompose | 0.853 | 0.906 | 0.800 | 0.5 | 0.066 | 0.00067 |
+| cite + gavel_scrutinize (loose) | 0.686 | 0.586 | 0.786 | 0.5 | 0.279 | 0.00035 |
+| full GAVEL (contract+debate+scrutiny) | 0.673 | 0.613 | 0.733 | 0.6 | 0.352 | 0.00125 |
+| evident_align → cite | 0.420 | 0.520 | 0.320 | – | – | 0.00041 |
+
+What carries over from the datasheet set, and what is new:
+- **Same ranking at the top.** A bigger generator is the only lever that adds accuracy;
+  verifiers subtract.
+- **GAVEL quote scrutiny breaks badly on tables** (false flag 0.28–0.35). The model quotes table
+  cells without the pipe layout, or merges a row label with a value from a different line.
+  It does catch real errors (0.5–0.6), the best catch rate of any verifier, but it throws away
+  about 3 correct answers per caught error.
+- **claim_decompose has the best trade-off among verifiers** (catches 50% of errors on T3 at a
+  9% false-flag rate), but it is still net negative at Haiku's 91% base accuracy.
+- **evident_align collapses on tables** (0.42): excerpts lose column headers, as on datasheets.
+- Plain (no citations) beats cite here (+2 pts). Writing quotes seems to cost Haiku some
+  arithmetic attention.
+
+## RAGTruth: verifier track (`bench vtrack`, 150 test responses)
+
+25 responses per (task × hallucinated?) cell, so the sample is balanced. The table reweights
+precision and F1 to RAGTruth's natural test prevalence (QA 17.8%, Summary 22.7%, Data2txt 64.3%;
+overall 34.9%) to compare with the paper's Table 5 (response-level, prompt baselines).
+
+| verifier | QA F1 | Data2txt F1 | Summary F1 | overall R | overall F1* | $/pair |
+|---|---|---|---|---|---|---|
+| paper: prompt gpt-4-turbo | 45.6 | 78.3 | 47.6 | 97.9 | 63.4 | – |
+| paper: SelfCheckGPT gpt-3.5 | 43.7 | 74.8 | 40.1 | 71.9 | 58.8 | – |
+| paper: fine-tuned Llama-2-13B | 68.2 | 88.1 | 59.1 | 80.7 | **78.7** | – |
+| ours: llm_judge @ Haiku 5.5 | 41.1 | 85.7 | 63.2 | 90.7 | 65.9 | 0.00046 |
+| ours: llm_judge @ Sonnet 5.5 | 42.2 | 88.3 | 56.0 | 96.0 | 67.3 | 0.00575 |
+| ours: claim_decompose @ Haiku 5.5 | 41.9 | 80.4 | 49.6 | 98.7 | 60.6 | 0.00107 |
+| ours: claim_decompose @ Sonnet 5.5 | 37.5 | 81.1 | 55.5 | 98.7 | 61.1 | 0.0134 |
+
+\*Reweighted from our balanced sample; n = 25 per cell, so ±~8 points per task.
+
+- **Sanity check passed.** Our LLM-judge adaptation reproduces the paper's prompt-baseline
+  profile: very high recall, poor precision on QA, F1 in the low-to-mid 60s overall.
+- **claim_decompose over-flags** (TNR 0.32): with long-form responses some atomic claim is
+  almost always judged unsupported. Its prompt is tuned for datasheet claims ("name the part,
+  parameter, condition and value"), which likely hurts on news and business data.
+- A bigger judge model buys almost nothing (+1.4 F1 at 12× the cost). As in the paper, the gap
+  to a fine-tuned small detector (78.7) is the real headroom. That argues for an
+  `nli_small`-style trained verifier over a bigger prompted one.
+
+## FACTS Grounding: long-form grounding (`bench facts`, 40 public examples)
+
+Context ≤30k chars. Judge: FACTS's own `response_level` prompt on Opus 5.5, which is not a
+generator here. One judge, no eligibility filter, so the numbers are not leaderboard-comparable.
+
+| generator | grounded | median words | gen $/example |
+|---|---|---|---|
+| Haiku 5.5 | 0.850 | 200 | 0.00058 |
+| **Haiku 5.5 + claim_decompose → revise** | **0.975** | 196 | 0.00278 |
+| Sonnet 5.5 | 0.850 | 269 | 0.0102 |
+
+- **The one clear win for a verifier: verify → revise on long-form output.** It fixed 6
+  responses and broke 1. Length stayed the same (median ratio 1.00; worst case 0.62×), so
+  it is not gaming the judge by deleting content. It beats Sonnet at about a quarter of the cost.
+- This turns around the short-answer finding. With one-number answers there is little to remove,
+  and flagging leads to abstaining (lost accuracy). With long-form answers, revising away
+  unsupported sentences keeps the useful content. **For the BI platform:** use verifiers to
+  *edit* narrative output, not to *gate* single-value answers.
+- Caveat: n = 40 and a single judge from the same model family as the generators.
+
+## Not done in Phase 3 (and why)
+
+- **LLM-AggreFact**: gated on Hugging Face (403 until the terms are accepted). The adapter would
+  be ~40 lines on top of `vtrack.VPair`. Accept the terms with a *personal* HF token, then add
+  `external/aggrefact.py`.
+- **HOVER**: needs a Wikipedia dump plus retrieval to be a grounded task. Deferred.
+- **FinQA**: TAT-QA covers the same table+text arithmetic niche.

@@ -359,7 +359,7 @@ def run(
     if limit:
         cfg.run.limit = limit
     items = load_items(cfg.run)
-    corpus = Corpus()
+    corpus = Corpus(Path(cfg.run.corpus))
     for spec in cfg.combos:
         if only and not any(o in spec.combo_id for o in only):
             continue
@@ -367,8 +367,98 @@ def run(
         typer.echo(f"wrote {out}")
 
 
+@app.command("fetch-external")
+def fetch_external(
+    name: str = typer.Argument(..., help="tatqa | ragtruth | facts"),
+    n: int = typer.Option(150, help="tatqa: items (half arithmetic, half span)"),
+    per_cell: int = typer.Option(25, help="ragtruth: pairs per (task, label) cell"),
+) -> None:
+    """Download an external set and adapt it under data/external/{name}/ (not committed)."""
+    if name == "tatqa":
+        from gqb.external import tatqa
+
+        items = tatqa.build(n=n)
+        typer.echo(f"{len(items)} items -> data/external/tatqa/items.jsonl (+ corpus/)")
+    elif name == "ragtruth":
+        from gqb.external import ragtruth
+
+        pairs = ragtruth.build(per_cell=per_cell)
+        typer.echo(f"{len(pairs)} pairs -> data/external/ragtruth/pairs.jsonl")
+    elif name == "facts":
+        from gqb.external import facts
+
+        ex = facts.build(n=n)
+        typer.echo(f"{len(ex)} examples -> data/external/facts/examples.jsonl")
+    else:
+        raise typer.BadParameter(f"unknown set {name!r}")
+
+
+@app.command("vtrack")
+def vtrack(
+    pairs: Path = Path("data/external/ragtruth/pairs.jsonl"),
+    verifier: list[str] = typer.Option(["llm_judge"], help="verify impl(s) from the registry"),
+    model: list[str] = typer.Option(["claude-haiku-5-5"]),
+    out: Path = Path("runs/vtrack"),
+    limit: int | None = None,
+) -> None:
+    """Verifier track: score verify stages on (context, response, label) pairs.
+    Writes {out}/{verifier}@{model}.jsonl and prints P/R/F1/BAcc per task."""
+    from gqb.corpus import write_jsonl
+    from gqb.llm import RoutingClient
+    from gqb.vtrack import load_pairs, metrics, run_verifier
+
+    ps = load_pairs(pairs)[:limit] if limit else load_pairs(pairs)
+    out.mkdir(parents=True, exist_ok=True)
+    summary = {}
+    for v in verifier:
+        for m in model:
+            res = run_verifier(v, m, ps, RoutingClient())
+            write_jsonl(out / f"{v}@{m}.jsonl", res)
+            summary[f"{v}@{m}"] = met = metrics(res)
+            for task, r in met.items():
+                typer.echo(
+                    f"{v}@{m:18s} {task:9s} n={r['n']:<4} P={r['precision']:.3f} "
+                    f"R={r['recall']:.3f} F1={r['f1']:.3f} BAcc={r['bacc']:.3f} "
+                    f"err={r['error_rate']:.2f} ${r['cost_per_pair']:.5f}/pair"
+                )
+    (out / "summary.json").write_text(json.dumps(summary, indent=1))
+
+
+@app.command("facts")
+def facts_cmd(
+    generator: list[str] = typer.Option(
+        ["claude-haiku-5-5", "claude-haiku-5-5+repair", "claude-sonnet-5-5"],
+        help="{model} or {model}+repair (claim_decompose -> revise)",
+    ),
+    judge: str = "claude-opus-5-5",
+    n: int = 40,
+    out: Path = Path("runs/facts"),
+) -> None:
+    """FACTS Grounding track: long-form answers judged with FACTS's response-level prompt."""
+    from gqb.corpus import write_jsonl
+    from gqb.external import facts
+    from gqb.llm import RoutingClient
+
+    path = facts.ROOT / "examples.jsonl"
+    ex = facts.load() if path.exists() else facts.build(n=n)
+    out.mkdir(parents=True, exist_ok=True)
+    for g in generator:
+        res = facts.run(g, judge, RoutingClient(), ex[:n])
+        write_jsonl(out / f"{g}.jsonl", res)
+        judged = [r for r in res if r.accurate is not None]
+        acc = sum(r.accurate for r in judged) / len(judged) if judged else 0.0
+        gen = sum(r.gen_cost_usd for r in res) / len(res)
+        typer.echo(
+            f"{g:28s} grounded={acc:.3f} (n={len(judged)}/{len(res)})  gen ${gen:.5f}/ex  "
+            f"judge={judge}"
+        )
+
+
 @app.command("report")
-def report(run_dir: Path) -> None:
+def report(
+    run_dir: Path,
+    items: list[Path] = typer.Option(None, help="Item files (default: data/items/*.jsonl)"),
+) -> None:
     """Score every combo JSONL in RUN_DIR against data/items -> scores.csv, report.html,
     record_scores.jsonl (in RUN_DIR)."""
     from gqb.corpus import write_jsonl
@@ -377,7 +467,7 @@ def report(run_dir: Path) -> None:
     from gqb.score import aggregate, score_record
 
     by_id: dict[str, BenchItem] = {}
-    for p in sorted(ITEMS.glob("*.jsonl")):
+    for p in items or sorted(ITEMS.glob("*.jsonl")):
         for r in _read_jsonl(p):
             by_id.setdefault(r["id"], BenchItem.model_validate(r))
     scores = []

@@ -25,9 +25,9 @@ See [docs/DESIGN.md](docs/DESIGN.md), [docs/METHODS.md](docs/METHODS.md),
 | 0 | Contracts (`schemas.py`, `stage.py`, `llm.py`), docs | done |
 | 1 | Datasheet QA set: 29 public datasheets, 503 cross-checked items (dev 108 / test 395) | done, human audit pending |
 | 2 | LLM adapters, BM25, 15 stage impls, runner, scorer, HTML report; item- and corpus-scope sweeps | core done (see ROADMAP) |
-| 3 | External set adapters (FACTS Grounding, TAT-QA/FinQA, HOVER, RAGTruth, LLM-AggreFact) | todo |
+| 3 | External sets: TAT-QA (QA), RAGTruth (verifier track), FACTS Grounding (long-form) | done; LLM-AggreFact gated, HOVER deferred |
 
-First results: [docs/RESULTS.md](docs/RESULTS.md). Headline: Haiku+BM25+cite ($0.00066/item, 0.93) is on the Pareto front; verifiers catch few errors, but GAVEL debate helps on near-miss unanswerables. Item counts: [data/items/STATS.md](data/items/STATS.md).
+First results: [docs/RESULTS.md](docs/RESULTS.md). Headline: Haiku+BM25+cite ($0.00066/item, 0.93) is on the Pareto front; verifiers catch few errors on short answers, but verify→revise lifts long-form grounding (FACTS 0.85→0.975). Item counts: [data/items/STATS.md](data/items/STATS.md).
 
 ## Quickstart
 

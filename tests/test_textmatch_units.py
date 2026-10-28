@@ -105,3 +105,23 @@ def test_enum_scoring():
     assert not enum_correct("B2", None, item)
     assert enum_correct(150.0, "°C", item)
     assert not enum_correct(125.0, "°C", item)
+
+
+def test_tatqa_unit_free_scoring():
+    from gqb.schemas import AnswerType, BenchItem, Tier
+    from gqb.score import as_number, numeric_correct
+
+    item = BenchItem(
+        id="t:1",
+        tier=Tier.DIRECT,
+        question="What is the total net sales in 2019?",
+        answer_type=AnswerType.NUMERIC,
+        gold_answer=1791790.0,
+        tolerance=0.01,
+        meta={"unit_free": True, "scale_factors": [1e3]},
+    )
+    assert numeric_correct(1791.8, "million USD", item)
+    assert numeric_correct(1791790, "$ thousands", item)
+    assert numeric_correct(-1791790, None, item)  # sign-lenient
+    assert not numeric_correct(1500.0, "million USD", item)
+    assert as_number("2019") == 2019.0 and as_number("2018/2019") is None
