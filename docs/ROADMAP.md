@@ -80,3 +80,8 @@
 - [x] FACTS second judge (Sonnet): 92–95% agreement with Opus, more lenient; repair gain holds
 - [ ] FACTS third judge from another model family (needs a non-Anthropic key via `OpenAICompatClient`)
       plus the eligibility filter
+
+## Grounding metrics
+- [x] `grounded_accuracy`, `hallucination_rate`, `source_hit`, `attributed` in `score.py` (deterministic)
+- [x] Table-header carry in evidence extraction (EvidenT, GAVEL contract): TAT-QA EvidenT 0.42→0.85
+- [ ] Judge-based claim faithfulness (RAGChecker-style) on a sample, for derived answers

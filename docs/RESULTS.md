@@ -563,3 +563,78 @@ Two eval-specific fixes were removed: `column_check` (a datasheet rule written a
 and a regex that carried this eval's synthetic revision header into extracted evidence. Every
 remaining fix is generic. Held-out test: Opus cite 0.920, Sonnet 0.898, Haiku + GAVEL contract 0.876,
 Haiku cite 0.833.
+
+# Grounding metrics and the table-header fix (paper-comparable view)
+
+## New metrics (deterministic, no judge)
+
+Accuracy alone does not say whether an answer can be trusted for a decision. The papers measure
+grounding, so `score.py` now also reports:
+
+| Metric | Meaning | Paper analogue |
+|---|---|---|
+| `grounded_accuracy` | correct **and** cites a gold page; or a correct abstention | FEVEROUS/GAVEL score (right verdict with right evidence) |
+| `hallucination_rate` | wrong / answered, counting any answer to an unanswerable item | RAGTruth / FACTS "unsupported response" rate |
+| `source_hit` | answered items citing at least one gold page | EvidenT gold-source hit rate |
+| `attributed` | the answer value literally appears in the evidence the answer cites (T1/T2/T5/T6) | EvidenT traceability; RAGChecker faithfulness (lexical) |
+
+## Fix: evidence extraction dropped table column headers (general)
+
+EvidenT align and the GAVEL contract both re-extract quotes. A quoted table row (`Tax credits | 2,261 |
+2,458` or `Shunt capacitance (C0) 3.0 pF`) lost the header that says which column is which year, or
+which is MIN/TYP/MAX. Both stages now ask for the table's header row(s) with each row quote (a
+`header` field, verbatim). The header is aligned against the source like any quote and prefixed to
+the unit, or dropped if it does not align. This is rag-facts-check's "repeat table headers in each
+chunk", applied at extraction time. It is format-independent: the same code fixes pipe tables
+(TAT-QA) and whitespace tables (datasheets). `table_headers: false` restores the old behaviour.
+
+| Combo | before | after |
+|---|---|---|
+| TAT-QA: EvidenT align → cite | 0.420 | **0.846** |
+| TAT-QA: full GAVEL | 0.813 | 0.846 |
+| TAT-QA: GAVEL contract → cite (new combo) | – | 0.913 |
+| dev: EvidenT align → cite | 0.783 | 0.808 (near-miss 0.44 → 0.62) |
+| dev: GAVEL contract → cite | 0.917 | 0.933 (near-miss 0.67 → 0.82) |
+| test: GAVEL contract → cite | 0.876 | **0.888** (near-miss 0.76 → 0.85) |
+| test: full GAVEL, Haiku | 0.858 | 0.876 |
+| test: full GAVEL, Haiku debaters + Sonnet judge | 0.876 | **0.896** |
+| lifecycle: GAVEL contract → cite, stale-only | 0.49 | 0.41 (no revision-header carry; see above) |
+
+## Held-out test (493 items), all methods, grounding view
+
+| Combo | acc | grounded acc | hallucination | source hit | attributed | answered | $/item |
+|---|---|---|---|---|---|---|---|
+| Opus cite | 0.920 | **0.902** | **0.049** | 0.959 | 0.992 | 0.66 | 0.0342 |
+| Sonnet cite | 0.898 | 0.878 | 0.061 | 0.954 | 0.983 | 0.66 | 0.0170 |
+| full GAVEL, Haiku + Sonnet judge | 0.896 | 0.864 | 0.059 | 0.919 | 0.987 | 0.65 | 0.0081 |
+| **Haiku GAVEL contract → cite** | 0.888 | 0.853 | **0.071** | 0.915 | **0.995** | 0.65 | **0.0012** |
+| full GAVEL, Haiku | 0.876 | 0.843 | 0.061 | 0.919 | 0.983 | 0.62 | 0.0018 |
+| Haiku cite + per_entity | 0.837 | 0.815 | 0.162 | 0.940 | 0.930 | 0.74 | 0.0009 |
+| Haiku cite + gavel_scrutinize | 0.835 | 0.813 | 0.154 | 0.942 | 0.929 | 0.72 | 0.0009 |
+| Haiku cite + span_check | 0.835 | 0.813 | 0.160 | 0.940 | 0.929 | 0.73 | 0.0009 |
+| **Haiku cite (basic RAG)** | 0.833 | 0.811 | 0.162 | 0.940 | 0.930 | 0.73 | 0.0009 |
+| Haiku cite + cascade | 0.831 | 0.809 | 0.161 | 0.943 | 0.929 | 0.73 | 0.0031 |
+| Haiku cite + llm_judge | 0.829 | 0.809 | 0.151 | 0.945 | 0.931 | 0.71 | 0.0015 |
+| Haiku cite + claim_decompose | 0.815 | 0.784 | 0.112 | 0.926 | 0.954 | 0.63 | 0.0016 |
+| Haiku EvidenT align → cite | 0.789 | 0.754 | 0.130 | 0.909 | 0.942 | 0.62 | 0.0011 |
+| Haiku plain (no citations) | 0.825 | 0.212 | 0.163 | – | – | 0.73 | 0.0008 |
+
+(About 30% of test items are unanswerable, so the ideal answered rate is about 0.70.)
+
+**On the papers' own terms, the methods do work:**
+- **GAVEL's evidence contract cuts the hallucination rate from 16% to 7%.** Values traceable to their
+  cited evidence go from 93% to 99.5%. It costs +$0.0003/item and also raises accuracy (+5.5 points).
+  This is the paper-style gain, and the one to adopt.
+- **EvidenT** improves traceability (attributed 0.93 → 0.94) and hallucination (16% → 13%), but it
+  over-abstains (answered 0.62) and loses accuracy on datasheets. On TAT-QA, after the header fix, it
+  is close to cite (0.85 vs 0.91).
+- **rag-facts-check-style claim verification** cuts hallucination (16% → 11%) and raises attribution
+  (0.95), at the cost of over-abstention. On long-form output it is the right tool (FACTS
+  0.85 → 0.95).
+- Post-hoc verifiers on short answers (span_check, scrutinize, llm_judge, cascade) do not move any
+  grounding metric. Short cited answers are already about 93% attributed, and the remaining wrong
+  answers cite real but wrong evidence, which a support check cannot catch.
+- **Plain RAG without citations is accurate (0.825) but only 21% verifiably grounded.** For a
+  decision-maker that number, not accuracy, is the one that matters.
+- Source hit is about 0.92–0.96 for every cited combo. When an answer is wrong, the cause is usually
+  the wrong row or value inside the right page, not the wrong document.

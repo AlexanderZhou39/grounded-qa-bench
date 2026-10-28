@@ -56,3 +56,36 @@ def test_near_miss_cond_rewrites_room_temperature():
     assert _ROOM.sub(_hot, "VIN = 12V, TA = +25°C") == "VIN = 12V, TA = 85°C"
     assert _ROOM.sub(_hot, "TJ=25°C") == "TJ=85°C"
     assert not _ROOM.search("TA = 125°C") and _TEMP.search("TA = –40°C")
+
+
+def test_grounding_metrics():
+    from gqb.schemas import AnswerType, BenchItem, GoldEvidence, RunRecord, Tier
+    from gqb.score import score_record
+
+    item = BenchItem(
+        id="d:t1:1",
+        tier=Tier.DIRECT,
+        question="What is the max VIN?",
+        answer_type=AnswerType.NUMERIC,
+        gold_answer=24.0,
+        unit="V",
+        tolerance=0.01,
+        doc_ids=["d"],
+        gold_evidence=[GoldEvidence(doc_id="d", page=1)],
+    )
+
+    def rec(value: float, unit_text: str, page: int) -> RunRecord:
+        u = EvidenceUnit(id="E1", passage_id="p", doc_id="d", page=page, text=unit_text)
+        claim = Claim(id="C1", text=f"VIN max is {value} V", citations=["E1"], quote=unit_text)
+        st = PipelineState(item_id=item.id, question=item.question, evidence=[u])
+        st.answer = Answer(text=claim.text, value=value, unit="V", claims=[claim])
+        return RunRecord(combo_id="c", item_id=item.id, state=st)
+
+    good = score_record(rec(24.0, "VIN 4.5 24 V", 1), item)
+    assert good.correct and good.attributed and good.grounded_correct
+    # right value, but cited from the wrong page: correct, not grounded
+    lucky = score_record(rec(24.0, "VIN 4.5 24 V", 7), item)
+    assert lucky.correct and not lucky.grounded_correct
+    # right value, gold page cited, but the value is not in the cited evidence
+    unattributed = score_record(rec(24.0, "VIN 4.5 to 18 V", 1), item)
+    assert unattributed.correct and unattributed.attributed is False

@@ -81,11 +81,24 @@ class Excerpts(BaseModel):
     excerpts: list[Excerpt]
 
 
+class HeadedExcerpt(Excerpt):
+    header: str | None = Field(
+        None,
+        description="If the excerpt is a table row: that table's column-header row(s), copied "
+        "verbatim from the same passage. Otherwise null.",
+    )
+
+
+class HeadedExcerpts(BaseModel):
+    excerpts: list[HeadedExcerpt]
+
+
 class EvidentAlignStage(BaseStage):
     slot = "cull"
     name = "evident_align"
 
     def apply(self, state: PipelineState, llm: StageMeter) -> PipelineState:
+        headers = bool(self.params.get("table_headers", True))
         res = self.complete(
             llm,
             [
@@ -99,18 +112,15 @@ class EvidentAlignStage(BaseStage):
             "needed to answer the question for the exact part asked about. Each excerpt must "
             "be self-contained (include the parameter name, conditions and the values). "
             "Return an empty list if nothing relevant exists. At most 8 excerpts.",
-            response_model=Excerpts,
+            response_model=HeadedExcerpts if headers else Excerpts,
             max_tokens=4096,
         )
+        loose = self.params.get("align", "loose") == "loose"
         units: list[EvidenceUnit] = []
         dropped = 0
         for ex in res.parsed.excerpts if res.parsed else []:
             p = _passage_by_tag(state.candidates, ex.passage)
-            m = (
-                align_quote(ex.quote, p.text, self.params.get("align", "loose") == "loose")
-                if p
-                else None
-            )
+            m = align_quote(ex.quote, p.text, loose) if p else None
             if p is None or m is None:
                 dropped += 1
                 continue
@@ -120,7 +130,8 @@ class EvidentAlignStage(BaseStage):
                     passage_id=p.id,
                     doc_id=p.doc_id,
                     page=p.page,
-                    text=ex.quote,
+                    # a table row keeps its column headers, so its values stay interpretable
+                    text=_headed(getattr(ex, "header", None), ex.quote, p.text, loose),
                     char_start=m.start,
                     char_end=m.end,
                 )
@@ -140,11 +151,31 @@ class Contract(BaseModel):
     bindings: list[Binding]
 
 
+class HeadedBinding(Binding):
+    header: str | None = Field(
+        None,
+        description="If the quote is a table row: that table's column-header row(s), copied "
+        "verbatim from the same passage. Otherwise null.",
+    )
+
+
+class HeadedContract(BaseModel):
+    bindings: list[HeadedBinding]
+
+
+def _headed(head: str | None, quote: str, text: str, loose: bool) -> str:
+    """Prefix a table-row quote with its column headers when they align to the source."""
+    if not head or head in quote or not align_quote(head, text, loose):
+        return quote
+    return f"{head}\n{quote}"
+
+
 class GavelContractStage(BaseStage):
     slot = "cull"
     name = "gavel_contract"
 
     def apply(self, state: PipelineState, llm: StageMeter) -> PipelineState:
+        headers = bool(self.params.get("table_headers", True))
         res = self.complete(
             llm,
             [
@@ -159,18 +190,15 @@ class GavelContractStage(BaseStage):
             "condition column, which value), and bind each to exactly one passage id and a "
             "verbatim quote from that passage. Only bind what the passages actually state. "
             "Return an empty list if the passages cannot establish the answer.",
-            response_model=Contract,
+            response_model=HeadedContract if headers else Contract,
             max_tokens=4096,
         )
         units: list[EvidenceUnit] = []
         ledger = []
         for b in res.parsed.bindings if res.parsed else []:
             p = _passage_by_tag(state.candidates, b.passage)
-            m = (
-                align_quote(b.quote, p.text, self.params.get("align", "loose") == "loose")
-                if p
-                else None
-            )
+            loose = self.params.get("align", "loose") == "loose"
+            m = align_quote(b.quote, p.text, loose) if p else None
             ok = p is not None and m is not None
             ledger.append({"subclaim": b.subclaim, "passage": b.passage, "valid": ok})
             if not ok:
@@ -181,7 +209,8 @@ class GavelContractStage(BaseStage):
                     passage_id=p.id,
                     doc_id=p.doc_id,
                     page=p.page,
-                    text=f"{b.quote}\n(establishes: {b.subclaim})",
+                    text=_headed(getattr(b, "header", None), b.quote, p.text, loose)
+                    + f"\n(establishes: {b.subclaim})",
                     char_start=m.start,
                     char_end=m.end,
                 )

@@ -31,8 +31,9 @@ Results: [docs/RESULTS.md](docs/RESULTS.md). Headlines:
 - Haiku + hybrid retrieval + part-number filter + cite reaches 0.935 at corpus scope for $0.00084/item.
 - On "near-miss" unanswerables, full GAVEL lifts Haiku from 0.47 to 0.89, close to Opus (0.93), at 1/16 of the cost.
 - Post-hoc verifiers catch few errors on short answers. Verify→revise lifts long-form grounding (FACTS 0.85→0.975).
-- Held-out test (493 items): Opus cite 0.920, Sonnet 0.898, Haiku + GAVEL evidence contract 0.876, Haiku cite
-  0.833.
+- Held-out test (493 items): Opus cite 0.920, Sonnet 0.898, Haiku + GAVEL evidence contract 0.888, Haiku cite
+  0.833. The GAVEL contract cuts the hallucination rate from 16% to 7% at Haiku cost. Plain RAG without
+  citations is 0.825 accurate but only 21% verifiably grounded.
 - A single Haiku judge call beats decompose-then-verify (RAGTruth, HOVER) at a fraction of the cost.
 - Superseded document revisions are handled in context once revision metadata is visible. Pipelines that re-extract evidence must carry that metadata, or they answer from stale sources without warning.
 

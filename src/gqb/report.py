@@ -36,7 +36,11 @@ svg .dot{stroke:var(--surface);stroke-width:2}svg .dot:hover{stroke:var(--ink)}
 COLS = [
     ("n", "n", "{:d}"),
     ("accuracy", "acc", "{:.3f}"),
+    ("grounded_accuracy", "grounded acc", "{:.3f}"),
     ("selective_accuracy", "sel.acc", "{:.3f}"),
+    ("hallucination_rate", "halluc.", "{:.3f}"),
+    ("source_hit", "source hit", "{:.3f}"),
+    ("attributed", "attributed", "{:.3f}"),
     ("false_abstain_rate", "false abst.", "{:.3f}"),
     ("abstain_recall", "abst. recall (T5)", "{:.3f}"),
     ("cite_precision", "cite P", "{:.3f}"),

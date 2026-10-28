@@ -5,7 +5,13 @@ Correctness:
   enum          - the gold option (and no other listed option) is named in the answer
   text          - not scored here (no free-text items yet); see docs/DESIGN.md
   unanswerable  - correct iff the system abstained
-Groundedness: page-level citation precision/recall vs gold_evidence, over cited evidence units.
+Groundedness (deterministic, no judge):
+  cite P/R      - page-level citation precision/recall vs gold_evidence, over cited evidence units
+  source_hit    - an answered item cites at least one gold page (EvidenT's gold-source hit rate)
+  attributed    - the answer value itself appears in the evidence the answer cites (direct,
+                  conditional and distractor tiers; derived and comparison answers are computed)
+  grounded_acc  - correct AND citing a gold page, or a correct abstention (FEVEROUS/GAVEL-style
+                  "right for the right reason")
 """
 
 from __future__ import annotations
@@ -19,7 +25,7 @@ from pydantic import BaseModel
 
 from gqb.dataset.qc import enum_match
 from gqb.schemas import AnswerType, BenchItem, RunRecord, Tier, Verdict
-from gqb.textmatch import normalize
+from gqb.textmatch import contains_number, normalize
 from gqb.units import numeric_match
 
 
@@ -35,6 +41,8 @@ class RecordScore(BaseModel):
     answer_key: str  # normalized answer for consistency
     cite_precision: float | None
     cite_recall: float | None
+    attributed: bool | None  # answer value present in the cited evidence (None: n/a)
+    grounded_correct: bool  # correct with a gold source cited, or a correct abstention
     supported_frac: float | None
     distractor_hit: bool
     raw_correct: bool | None  # answer value correct before repair/abstention (None: no value)
@@ -151,6 +159,25 @@ def score_record(rec: RunRecord, item: BenchItem) -> RecordScore:
             hit = len(cited & gold)
             cite_p, cite_r = hit / len(cited), hit / len(gold)
 
+    attributed = None
+    if not abstained and st.answer and item.tier not in (Tier.DERIVED, Tier.CROSS_DOC):
+        units = {u.id: u for u in st.evidence}
+        cited_text = "\n".join(
+            units[c].text for cl in st.answer.claims for c in cl.citations if c in units
+        )
+        num = as_number(st.answer.value)
+        if num is not None:
+            attributed = any(
+                contains_number(cited_text, num * k, rel_tol=1e-3)
+                for k in (1.0, 1e3, 1e-3, 1e6, 1e-6)
+            )
+        elif isinstance(st.answer.value, str) and st.answer.value.strip():
+            attributed = normalize(st.answer.value) in normalize(cited_text)
+    if item.answer_type == AnswerType.UNANSWERABLE:
+        grounded_correct = correct
+    else:
+        grounded_correct = correct and bool(cite_r)
+
     supported = None
     if st.verdicts:
         supported = sum(v.verdict == Verdict.SUPPORTED for v in st.verdicts) / len(st.verdicts)
@@ -190,6 +217,8 @@ def score_record(rec: RunRecord, item: BenchItem) -> RecordScore:
         answer_key=_answer_key(rec),
         cite_precision=cite_p,
         cite_recall=cite_r,
+        attributed=attributed,
+        grounded_correct=grounded_correct,
         supported_frac=supported,
         distractor_hit=distractor_hit,
         raw_correct=raw_correct,
@@ -207,8 +236,12 @@ class Aggregate(BaseModel):
     tier: str  # "1".."6", "all", or "{tier}:{kind}" sub-buckets
     n: int
     accuracy: float
+    grounded_accuracy: float  # correct with a gold source cited, or correct abstention
     answered_rate: float
     selective_accuracy: float | None  # correct / answered (answerable tiers)
+    hallucination_rate: float | None  # wrong / answered, incl. answering an unanswerable item
+    source_hit: float | None  # EvidenT's gold-source hit rate: answered items citing a gold page
+    attributed: float | None  # answered items whose value appears in their cited evidence
     false_abstain_rate: float | None  # abstained on answerable items
     abstain_recall: float | None  # tier 5: abstained
     cite_precision: float | None
@@ -256,16 +289,25 @@ def aggregate(scores: list[RecordScore]) -> list[Aggregate]:
             reps[s.item_id] += 1
         multi = [i for i in by_item if reps[i] > 1]
         lat = [s.latency_ms for s in ss]
+        n_ans = sum(not s.abstained for s in ss)
         out.append(
             Aggregate(
                 combo_id=combo,
                 tier=tier,
                 n=len(ss),
                 accuracy=sum(s.correct for s in ss) / len(ss),
+                grounded_accuracy=sum(s.grounded_correct for s in ss) / len(ss),
                 answered_rate=sum(not s.abstained for s in ss) / len(ss),
                 selective_accuracy=(sum(s.correct for s in answered) / len(answered))
                 if answered
                 else None,
+                hallucination_rate=(
+                    sum(not s.correct for s in ss if not s.abstained) / n_ans if n_ans else None
+                ),
+                source_hit=_mean(
+                    float(s.cite_recall > 0) for s in answered if s.cite_recall is not None
+                ),
+                attributed=_mean(float(s.attributed) for s in ss if s.attributed is not None),
                 false_abstain_rate=(sum(s.abstained for s in answerable) / len(answerable))
                 if answerable
                 else None,

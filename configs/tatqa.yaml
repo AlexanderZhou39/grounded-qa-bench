@@ -19,6 +19,7 @@ combos:
   - {generate: cite, verify: claim_decompose, repair: abstain}
   - {cull: gavel_contract, generate: gavel_debate, verify: gavel_scrutinize, repair: abstain}
   - {cull: evident_align, generate: cite}
+  - {cull: gavel_contract, generate: cite}
   - generate: cite
     verify: cascade
     repair: abstain
